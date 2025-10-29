@@ -48,6 +48,7 @@ from transformers.image_utils import (
     valid_images,
     validate_preprocess_arguments,
 )
+
 try:
     # transformers>=4.52
     from transformers.video_utils import VideoInput
@@ -75,7 +76,11 @@ def make_batched_images(images) -> List[List[ImageInput]]:
     Returns:
         list: A list of images.
     """
-    if isinstance(images, (list, tuple)) and isinstance(images[0], (list, tuple)) and is_valid_image(images[0][0]):
+    if (
+        isinstance(images, (list, tuple))
+        and isinstance(images[0], (list, tuple))
+        and is_valid_image(images[0][0])
+    ):
         return [img for img_list in images for img in img_list]
 
     elif isinstance(images, (list, tuple)) and is_valid_image(images[0]):
@@ -89,7 +94,11 @@ def make_batched_images(images) -> List[List[ImageInput]]:
 
 # Copied from transformers.models.llava_next_video.image_processing_llava_next_video.make_batched_videos
 def make_batched_videos(videos) -> List[VideoInput]:
-    if isinstance(videos, (list, tuple)) and isinstance(videos[0], (list, tuple)) and is_valid_image(videos[0][0]):
+    if (
+        isinstance(videos, (list, tuple))
+        and isinstance(videos[0], (list, tuple))
+        and is_valid_image(videos[0][0])
+    ):
         return videos
 
     elif isinstance(videos, (list, tuple)) and is_valid_image(videos[0]):
@@ -105,7 +114,11 @@ def make_batched_videos(videos) -> List[VideoInput]:
 
 
 def smart_resize(
-    height: int, width: int, factor: int = 28, min_pixels: int = 56 * 56, max_pixels: int = 14 * 14 * 4 * 1280
+    height: int,
+    width: int,
+    factor: int = 28,
+    min_pixels: int = 56 * 56,
+    max_pixels: int = 14 * 14 * 4 * 1280,
 ):
     """Rescales the image so that the following conditions are met:
     1. Both dimensions (height and width) are divisible by 'factor'.
@@ -118,7 +131,11 @@ def smart_resize(
     #     raise ValueError(
     #         f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
     #     )
-    if height < factor or width < factor or max(height, width) / min(height, width) > 200:
+    if (
+        height < factor
+        or width < factor
+        or max(height, width) / min(height, width) > 200
+    ):
         # extreme cases, resize to a square
         height = width = max(factor, height, width)
     h_bar = round(height / factor) * factor
@@ -167,7 +184,12 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
             The merge size of the vision encoder to llm encoder.
     """
 
-    model_input_names = ["pixel_values", "image_grid_thw", "pixel_values_videos", "video_grid_thw"]
+    model_input_names = [
+        "pixel_values",
+        "image_grid_thw",
+        "pixel_values_videos",
+        "video_grid_thw",
+    ]
 
     def __init__(
         self,
@@ -201,7 +223,7 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         self.merge_size = merge_size
         self.size = {"min_pixels": min_pixels, "max_pixels": max_pixels}
         self.do_convert_rgb = do_convert_rgb
-    
+
     def rerank_values(self, arr):
         mapping = {}
         new_arr = np.empty_like(arr)
@@ -212,33 +234,64 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                 next_value += 1
             new_arr[idx] = mapping[x]
         return new_arr
-    
-    def _build_uigraph(self, patches,
-                        grid_t, grid_h, grid_w,
-                        grid_h_half, grid_w_half,
-                        uigraph_threshold,
-                        channel):
+
+    def _build_uigraph(
+        self,
+        patches,
+        grid_t,
+        grid_h,
+        grid_w,
+        grid_h_half,
+        grid_w_half,
+        uigraph_threshold,
+        channel,
+    ):
         num_patches = grid_t * grid_h_half * grid_w_half
         uf = UnionFind(num_patches)
-        
+
         def idx(t, i, j):
             return t * grid_h_half * grid_w_half + i * grid_w_half + j
+
         # Compare adjacent patches based on the threshold
         for t in range(grid_t):
             for i in range(grid_h_half):
                 for j in range(grid_w_half):
                     current_idx = idx(t, i, j)
-                    current_patch = patches[t, i, j, :, :, :, :,]  # Shape: (channel, temporal_patch_size, patch_size, patch_size)
+                    current_patch = patches[
+                        t,
+                        i,
+                        j,
+                        :,
+                        :,
+                        :,
+                        :,
+                    ]  # Shape: (channel, temporal_patch_size, patch_size, patch_size)
                     # Compare with right neighbor
                     if j + 1 < grid_w_half:
-                        right_patch = patches[t, i, j + 1, :, :, :, :,]
+                        right_patch = patches[
+                            t,
+                            i,
+                            j + 1,
+                            :,
+                            :,
+                            :,
+                            :,
+                        ]
                         # Compute the difference between the patches
                         diff = np.linalg.norm(current_patch - right_patch)
                         if diff < uigraph_threshold:
                             uf.union(current_idx, idx(t, i, j + 1))
                     # Compare with bottom neighbor
                     if i + 1 < grid_h_half:
-                        bottom_patch = patches[t, i + 1, j, :, :, :, :,]
+                        bottom_patch = patches[
+                            t,
+                            i + 1,
+                            j,
+                            :,
+                            :,
+                            :,
+                            :,
+                        ]
                         # Compute the difference between the patches
                         diff = np.linalg.norm(current_patch - bottom_patch)
                         if diff < uigraph_threshold:
@@ -248,12 +301,16 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         uigraph_assign_flat = le.fit_transform(uigraph_assign_flat)
         uigraph_assign = uigraph_assign_flat.reshape((grid_t, grid_h_half, grid_w_half))
         return uigraph_assign
-    
+
     def _vis_uigraph(self, uigraph_assign, image_size, patch_size, image):
         resized_height, resized_width = image_size[0]
         uigraph_assign = uigraph_assign[0]
-        upscaled_uigraph_assign = np.repeat(np.repeat(uigraph_assign, patch_size, axis=0), patch_size, axis=1)
-        upscaled_uigraph_assign = upscaled_uigraph_assign[:resized_height, :resized_width]
+        upscaled_uigraph_assign = np.repeat(
+            np.repeat(uigraph_assign, patch_size, axis=0), patch_size, axis=1
+        )
+        upscaled_uigraph_assign = upscaled_uigraph_assign[
+            :resized_height, :resized_width
+        ]
         if isinstance(image, PIL.Image.Image):
             image = np.array(image)
         if image.shape[0] in [1, 3]:  # Assuming grayscale or RGB image
@@ -262,7 +319,9 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
             pass
         else:
             raise ValueError("Unexpected image shape: {}".format(image.shape))
-        boundaries_image = mark_boundaries(image, upscaled_uigraph_assign, color=(1, 0.4, 0.4))
+        boundaries_image = mark_boundaries(
+            image, upscaled_uigraph_assign, color=(1, 0.4, 0.4)
+        )
         boundaries_image = (boundaries_image * 255).astype(np.uint8)
         return Image.fromarray(boundaries_image)
 
@@ -345,7 +404,7 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         height, width = get_image_size(images[0], channel_dim=input_data_format)
         resized_height, resized_width = height, width
         processed_images = []
-        processed_resize = [] # for visualization 
+        processed_resize = []  # for visualization
         for image in images:
             if do_resize:
                 resized_height, resized_width = smart_resize(
@@ -356,18 +415,28 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                     max_pixels=self.max_pixels,
                 )
                 image = resize(
-                    image, size=(resized_height, resized_width), resample=resample, input_data_format=input_data_format
+                    image,
+                    size=(resized_height, resized_width),
+                    resample=resample,
+                    input_data_format=input_data_format,
                 )
 
             if do_rescale:
-                image = self.rescale(image, scale=rescale_factor, input_data_format=input_data_format)
+                image = self.rescale(
+                    image, scale=rescale_factor, input_data_format=input_data_format
+                )
 
             if do_normalize:
                 image = self.normalize(
-                    image=image, mean=image_mean, std=image_std, input_data_format=input_data_format
+                    image=image,
+                    mean=image_mean,
+                    std=image_std,
+                    input_data_format=input_data_format,
                 )
 
-            image = to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format)
+            image = to_channel_dimension_format(
+                image, data_format, input_channel_dim=input_data_format
+            )
             processed_images.append(image)
             processed_resize.append((resized_height, resized_width))
 
@@ -377,16 +446,23 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         if patches.shape[0] % self.temporal_patch_size != 0:
             # @ruimeng: pad frames to be divisible by temporal_patch_size, in case of a single image, it will be padded to 2 frames
             #       but why only repeat (self.temporal_patch_size - 1) times, shouldn't it be (self.temporal_patch_size - patches.shape[0] % self.temporal_patch_size)?
-            repeats = np.repeat(patches[-1][np.newaxis], self.temporal_patch_size - 1, axis=0)
+            repeats = np.repeat(
+                patches[-1][np.newaxis], self.temporal_patch_size - 1, axis=0
+            )
             patches = np.concatenate([patches, repeats], axis=0)
         channel = patches.shape[1]
         grid_t = patches.shape[0] // self.temporal_patch_size
-        grid_h, grid_w = resized_height // self.patch_size, resized_width // self.patch_size
+        grid_h, grid_w = (
+            resized_height // self.patch_size,
+            resized_width // self.patch_size,
+        )
 
         # default grid as init. ui graph
         grid_h_half = grid_h // self.merge_size
         grid_w_half = grid_w // self.merge_size
-        uigraph_assign = np.arange(grid_t * grid_h_half * grid_w_half).reshape((grid_t, grid_h_half, grid_w_half))
+        uigraph_assign = np.arange(grid_t * grid_h_half * grid_w_half).reshape(
+            (grid_t, grid_h_half, grid_w_half)
+        )
 
         patches = patches.reshape(
             grid_t,
@@ -403,17 +479,28 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
 
         # showui's ui graph construction
         if uigraph_use:
-            uigraph_assign = self._build_uigraph(patches=patches,
-                                                grid_t=grid_t, grid_h=grid_h, grid_w=grid_w,
-                                                grid_h_half=grid_h_half, grid_w_half=grid_w_half,
-                                                uigraph_threshold=uigraph_diff,
-                                                channel=channel)
-        
+            uigraph_assign = self._build_uigraph(
+                patches=patches,
+                grid_t=grid_t,
+                grid_h=grid_h,
+                grid_w=grid_w,
+                grid_h_half=grid_h_half,
+                grid_w_half=grid_w_half,
+                uigraph_threshold=uigraph_diff,
+                channel=channel,
+            )
+
         flatten_patches = patches.reshape(
-            grid_t * grid_h * grid_w, channel * self.temporal_patch_size * self.patch_size * self.patch_size
+            grid_t * grid_h * grid_w,
+            channel * self.temporal_patch_size * self.patch_size * self.patch_size,
         )
 
-        return flatten_patches, (grid_t, grid_h, grid_w), uigraph_assign, processed_resize
+        return (
+            flatten_patches,
+            (grid_t, grid_h, grid_w),
+            uigraph_assign,
+            processed_resize,
+        )
 
     def preprocess(
         self,
@@ -498,11 +585,15 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         size = size if size is not None else self.size
         resample = resample if resample is not None else self.resample
         do_rescale = do_rescale if do_rescale is not None else self.do_rescale
-        rescale_factor = rescale_factor if rescale_factor is not None else self.rescale_factor
+        rescale_factor = (
+            rescale_factor if rescale_factor is not None else self.rescale_factor
+        )
         do_normalize = do_normalize if do_normalize is not None else self.do_normalize
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
-        do_convert_rgb = do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        do_convert_rgb = (
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        )
 
         if images is not None:
             images = make_batched_images(images)
@@ -527,26 +618,32 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
 
         if images is not None:
             pixel_values, vision_grid_thws = [], []
-            patch_assign_sep = []        # store the patch-wise assignment separately for each ui graph
-            patch_assign_len = []        # store the component number per ui graph
-            patch_assign_shared = []     # store the patch-wise assignment jointly with shared component idx
+            patch_assign_sep = (
+                []
+            )  # store the patch-wise assignment separately for each ui graph
+            patch_assign_len = []  # store the component number per ui graph
+            patch_assign_shared = (
+                []
+            )  # store the patch-wise assignment jointly with shared component idx
 
             for image in images:
-                patches, image_grid_thw, uigraph_assign, image_resize = self._preprocess(
-                    image,
-                    do_resize=do_resize,
-                    resample=resample,
-                    do_rescale=do_rescale,
-                    rescale_factor=rescale_factor,
-                    do_normalize=do_normalize,
-                    image_mean=image_mean,
-                    image_std=image_std,
-                    data_format=data_format,
-                    do_convert_rgb=do_convert_rgb,
-                    input_data_format=input_data_format,
-                    uigraph_use=uigraph_use,
-                    uigraph_diff=uigraph_diff,
-                    uigraph_rand=uigraph_rand,
+                patches, image_grid_thw, uigraph_assign, image_resize = (
+                    self._preprocess(
+                        image,
+                        do_resize=do_resize,
+                        resample=resample,
+                        do_rescale=do_rescale,
+                        rescale_factor=rescale_factor,
+                        do_normalize=do_normalize,
+                        image_mean=image_mean,
+                        image_std=image_std,
+                        data_format=data_format,
+                        do_convert_rgb=do_convert_rgb,
+                        input_data_format=input_data_format,
+                        uigraph_use=uigraph_use,
+                        uigraph_diff=uigraph_diff,
+                        uigraph_rand=uigraph_rand,
+                    )
                 )
 
                 # if use uigraph
@@ -560,9 +657,11 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                 uigraph_assign_1d = uigraph_assign.flatten()
                 uigraph_assign_1d = self.rerank_values(uigraph_assign_1d)
                 uigraph_assign_len = len(np.unique(uigraph_assign_1d))
-                
+
                 patch_assign_sep.extend(uigraph_assign_1d)
-                uigraph_assign_1d += sum(patch_assign_len)    # shared component idx to distinguish different images
+                uigraph_assign_1d += sum(
+                    patch_assign_len
+                )  # shared component idx to distinguish different images
                 patch_assign_shared.extend(uigraph_assign_1d)
                 patch_assign_len.append(uigraph_assign_len)
 
@@ -570,24 +669,29 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                 vision_grid_thws.append(image_grid_thw)
 
                 if vis_dir is not None:
-                    image_vis = self._vis_uigraph(uigraph_assign, image_resize, self.patch_size*self.merge_size, image)
+                    image_vis = self._vis_uigraph(
+                        uigraph_assign,
+                        image_resize,
+                        self.patch_size * self.merge_size,
+                        image,
+                    )
                     # pre_num = np.prod(uigraph_assign.shape).item()
                     # post_num = len(np.unique(uigraph_assign))
                     # img_size = f'{image_resize[0][0]}x{image_resize[0][1]}'
                     # image_vis.save(f'{vis_dir}/{img_size}_{pre_num}_{post_num}.png')
-                    image_vis.save(f'{vis_dir}/demo.png')
+                    image_vis.save(f"{vis_dir}/demo.png")
 
             pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
             patch_assign_shared = np.array(patch_assign_shared)
 
             data = {
-                    "pixel_values": pixel_values, 
-                    "image_grid_thw": vision_grid_thws, 
-                    "patch_assign": patch_assign_shared,
-                    "patch_assign_sep": patch_assign_sep,
-                    "patch_assign_len": patch_assign_len 
-                }
+                "pixel_values": pixel_values,
+                "image_grid_thw": vision_grid_thws,
+                "patch_assign": patch_assign_shared,
+                "patch_assign_sep": patch_assign_sep,
+                "patch_assign_len": patch_assign_len,
+            }
 
         if videos is not None:
             pixel_values, vision_grid_thws = [], []
@@ -610,7 +714,10 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                 vision_grid_thws.append(video_grid_thw)
             pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
-            data = {"pixel_values_videos": pixel_values, "video_grid_thw": vision_grid_thws}
+            data = {
+                "pixel_values_videos": pixel_values,
+                "video_grid_thw": vision_grid_thws,
+            }
 
         return BatchFeature(data=data, tensor_type=return_tensors)
 

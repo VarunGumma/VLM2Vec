@@ -16,11 +16,21 @@ import os
 import torch
 import math
 
-from src.data.collator.train_collator import split_vlm_inputs, get_dense_rep, split_and_process_vlm_inputs
+from src.data.collator.train_collator import (
+    split_vlm_inputs,
+    get_dense_rep,
+    split_and_process_vlm_inputs,
+)
 from src.model.model import MMEBModel
 from src.loss import SimpleContrastiveLoss, DistributedContrastiveLoss
 from src.grad_cache.grad_cache import GradCache
-from torch.utils.data import DataLoader, Dataset, IterableDataset, RandomSampler, SequentialSampler
+from torch.utils.data import (
+    DataLoader,
+    Dataset,
+    IterableDataset,
+    RandomSampler,
+    SequentialSampler,
+)
 
 from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
 from transformers.trainer_callback import (
@@ -30,7 +40,8 @@ from transformers.trainer_callback import (
 from transformers.trainer_utils import (
     TrainOutput,
     has_length,
-    speed_metrics, seed_worker,
+    speed_metrics,
+    seed_worker,
 )
 
 from transformers.trainer_pt_utils import (
@@ -43,9 +54,13 @@ from transformers.utils import (
     is_accelerate_available,
     is_apex_available,
     is_torch_xla_available,
-    logging, is_sagemaker_mp_enabled,
-    CONFIG_NAME, WEIGHTS_NAME, SAFE_WEIGHTS_NAME,
-    ADAPTER_WEIGHTS_NAME, ADAPTER_SAFE_WEIGHTS_NAME
+    logging,
+    is_sagemaker_mp_enabled,
+    CONFIG_NAME,
+    WEIGHTS_NAME,
+    SAFE_WEIGHTS_NAME,
+    ADAPTER_WEIGHTS_NAME,
+    ADAPTER_SAFE_WEIGHTS_NAME,
 )
 
 from src.utils import batch_to_device
@@ -58,13 +73,16 @@ if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
     from torch_xla import __version__ as XLA_VERSION
 
-    IS_XLA_FSDPV2_POST_2_2 = version.parse(XLA_VERSION) >= version.parse(XLA_FSDPV2_MIN_VERSION)
+    IS_XLA_FSDPV2_POST_2_2 = version.parse(XLA_VERSION) >= version.parse(
+        XLA_FSDPV2_MIN_VERSION
+    )
     if IS_XLA_FSDPV2_POST_2_2:
         pass
 else:
     IS_XLA_FSDPV2_POST_2_2 = False
 
 logger = logging.get_logger(__name__)
+
 
 class MMEBTrainer(Trainer):
     def __init__(self, *args, **kwargs):
@@ -84,11 +102,15 @@ class MMEBTrainer(Trainer):
         if len(batch_samples) > 0 and "labels" in batch_samples[0]:
             # For now we don't support object detection
             try:
-                num_items_in_batch = sum([(batch["labels"].ne(-100)).sum() for batch in batch_samples])
+                num_items_in_batch = sum(
+                    [(batch["labels"].ne(-100)).sum() for batch in batch_samples]
+                )
             except (TypeError, AttributeError):
                 pass
         if self.args.average_tokens_across_devices and num_items_in_batch is not None:
-            num_items_in_batch = self.accelerator.gather(num_items_in_batch).sum().item()
+            num_items_in_batch = (
+                self.accelerator.gather(num_items_in_batch).sum().item()
+            )
         if torch.is_tensor(num_items_in_batch):
             num_items_in_batch = num_items_in_batch.item()
         return batch_samples, num_items_in_batch
@@ -102,18 +124,21 @@ class MMEBTrainer(Trainer):
 
         if state_dict is None:
             state_dict = self.model.state_dict()
-        prefix = 'encoder.'
-        assert all(k.startswith(prefix) for k in state_dict.keys()), list(state_dict.keys())
-        state_dict = {k[len(prefix):]: v for k, v in state_dict.items()}
+        prefix = "encoder."
+        assert all(k.startswith(prefix) for k in state_dict.keys()), list(
+            state_dict.keys()
+        )
+        state_dict = {k[len(prefix) :]: v for k, v in state_dict.items()}
         self.model.encoder.save_pretrained(
-            output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+            output_dir,
+            state_dict=state_dict,
+            safe_serialization=self.args.save_safetensors,
         )
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         # override original trainer's method
@@ -131,7 +156,9 @@ class MMEBTrainer(Trainer):
             raise ValueError("Trainer: training requires a train_dataset.")
         train_dataset = self.train_dataset
         data_collator = self.data_collator
-        train_dataset = self._remove_unused_columns(train_dataset, description="training")
+        train_dataset = self._remove_unused_columns(
+            train_dataset, description="training"
+        )
         dataloader_params = {
             "batch_size": self._train_batch_size,
             "collate_fn": data_collator,
@@ -148,7 +175,9 @@ class MMEBTrainer(Trainer):
             dataloader_params["sampler"] = None
             dataloader_params["shuffle"] = False
             dataloader_params["drop_last"] = True
-            dataloader_params["prefetch_factor"] = None # # tune on both prefetch_factor and persistent_workers will cause hang at epoch2
+            dataloader_params["prefetch_factor"] = (
+                None  # # tune on both prefetch_factor and persistent_workers will cause hang at epoch2
+            )
         return DataLoader(train_dataset, **dataloader_params)
 
     def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
@@ -158,7 +187,12 @@ class MMEBTrainer(Trainer):
         self.model_wrapped = self.model
 
     def _inner_training_loop(
-        self, batch_size=None, args=None, resume_from_checkpoint=None, trial=None, ignore_keys_for_eval=None
+        self,
+        batch_size=None,
+        args=None,
+        resume_from_checkpoint=None,
+        trial=None,
+        ignore_keys_for_eval=None,
     ):
         self.accelerator.free_memory()
         self._train_batch_size = batch_size
@@ -173,11 +207,15 @@ class MMEBTrainer(Trainer):
                 if self.is_deepspeed_enabled:
                     # Temporarily unset `self.args.train_batch_size`
                     original_bs = self.args.per_device_train_batch_size
-                    self.args.per_device_train_batch_size = self._train_batch_size // max(1, self.args.n_gpu)
+                    self.args.per_device_train_batch_size = (
+                        self._train_batch_size // max(1, self.args.n_gpu)
+                    )
                     self.propagate_args_to_deepspeed(True)
                     self.args.per_device_train_batch_size = original_bs
             self.state.train_batch_size = self._train_batch_size
-        logger.debug(f"Currently training with a batch size of: {self._train_batch_size}")
+        logger.debug(
+            f"Currently training with a batch size of: {self._train_batch_size}"
+        )
         # Data loader and number of training steps
         train_dataloader = self.get_train_dataloader()
 
@@ -185,13 +223,17 @@ class MMEBTrainer(Trainer):
         # number of training epochs: num_train_epochs
         # number of training steps per epoch: num_update_steps_per_epoch
         # total number of training steps to execute: max_steps
-        total_train_batch_size = self._train_batch_size * args.gradient_accumulation_steps * args.world_size
+        total_train_batch_size = (
+            self._train_batch_size * args.gradient_accumulation_steps * args.world_size
+        )
 
         len_dataloader = None
         num_train_tokens = None
         if has_length(train_dataloader):
             len_dataloader = len(train_dataloader)
-            num_update_steps_per_epoch = len_dataloader // args.gradient_accumulation_steps
+            num_update_steps_per_epoch = (
+                len_dataloader // args.gradient_accumulation_steps
+            )
             num_update_steps_per_epoch = max(num_update_steps_per_epoch, 1)
             num_examples = self.num_examples(train_dataloader)
             if args.max_steps > 0:
@@ -204,15 +246,24 @@ class MMEBTrainer(Trainer):
                 num_train_samples = args.max_steps * total_train_batch_size
                 if args.include_tokens_per_second:
                     num_train_tokens = (
-                        self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
+                        self.num_tokens(train_dataloader, args.max_steps)
+                        * args.gradient_accumulation_steps
                     )
             else:
-                max_steps = math.ceil(args.num_train_epochs * num_update_steps_per_epoch)
+                max_steps = math.ceil(
+                    args.num_train_epochs * num_update_steps_per_epoch
+                )
                 num_train_epochs = math.ceil(args.num_train_epochs)
-                num_train_samples = self.num_examples(train_dataloader) * args.num_train_epochs
+                num_train_samples = (
+                    self.num_examples(train_dataloader) * args.num_train_epochs
+                )
                 if args.include_tokens_per_second:
-                    num_train_tokens = self.num_tokens(train_dataloader) * args.num_train_epochs
-        elif args.max_steps > 0:  # Rely on max_steps when dataloader does not have a working size
+                    num_train_tokens = (
+                        self.num_tokens(train_dataloader) * args.num_train_epochs
+                    )
+        elif (
+            args.max_steps > 0
+        ):  # Rely on max_steps when dataloader does not have a working size
             max_steps = args.max_steps
             # Setting a very large number of epochs so we go as many times as necessary over the iterator.
             num_train_epochs = sys.maxsize
@@ -220,14 +271,21 @@ class MMEBTrainer(Trainer):
             num_examples = total_train_batch_size * args.max_steps
             num_train_samples = args.max_steps * total_train_batch_size
             if args.include_tokens_per_second:
-                num_train_tokens = self.num_tokens(train_dataloader, args.max_steps) * args.gradient_accumulation_steps
+                num_train_tokens = (
+                    self.num_tokens(train_dataloader, args.max_steps)
+                    * args.gradient_accumulation_steps
+                )
         else:
             raise ValueError(
                 "args.max_steps must be set to a positive value if dataloader does not have a length, was"
                 f" {args.max_steps}"
             )
 
-        delay_optimizer_creation = is_sagemaker_mp_enabled() or self.is_fsdp_xla_enabled or self.is_fsdp_enabled
+        delay_optimizer_creation = (
+            is_sagemaker_mp_enabled()
+            or self.is_fsdp_xla_enabled
+            or self.is_fsdp_enabled
+        )
 
         # We need to reset the scheduler, as its parameters may be different on subsequent calls
         if self._created_lr_scheduler:
@@ -238,7 +296,9 @@ class MMEBTrainer(Trainer):
 
         self.state = TrainerState(
             stateful_callbacks=[
-                cb for cb in self.callback_handler.callbacks + [self.control] if isinstance(cb, ExportableState)
+                cb
+                for cb in self.callback_handler.callbacks + [self.control]
+                if isinstance(cb, ExportableState)
             ]
         )
         self.state.is_hyper_param_search = trial is not None
@@ -263,7 +323,9 @@ class MMEBTrainer(Trainer):
 
         # Activate gradient checkpointing if needed
         if args.gradient_checkpointing:
-            self.model.gradient_checkpointing_enable(gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs)
+            self.model.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs=args.gradient_checkpointing_kwargs
+            )
 
         model = self._wrap_model(self.model_wrapped)
 
@@ -285,7 +347,9 @@ class MMEBTrainer(Trainer):
                 if self.use_apex:
                     model = self.accelerator.prepare(self.model)
                 else:
-                    model, self.optimizer = self.accelerator.prepare(self.model, self.optimizer)
+                    model, self.optimizer = self.accelerator.prepare(
+                        self.model, self.optimizer
+                    )
             else:
                 # to handle cases wherein we pass "DummyScheduler" such as when it is specified in DeepSpeed config.
                 model, self.optimizer, self.lr_scheduler = self.accelerator.prepare(
@@ -318,13 +382,23 @@ class MMEBTrainer(Trainer):
         logger.info("***** Running training *****")
         logger.info(f"  Num examples = {num_examples:,}")
         logger.info(f"  Num Epochs = {num_train_epochs:,}")
-        logger.info(f"  Instantaneous batch size per device = {self.args.per_device_train_batch_size:,}")
+        logger.info(
+            f"  Instantaneous batch size per device = {self.args.per_device_train_batch_size:,}"
+        )
         if self.args.per_device_train_batch_size != self._train_batch_size:
-            logger.info(f"  Training with DataParallel so batch size has been adjusted to: {self._train_batch_size:,}")
-        logger.info(f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size:,}")
-        logger.info(f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}")
+            logger.info(
+                f"  Training with DataParallel so batch size has been adjusted to: {self._train_batch_size:,}"
+            )
+        logger.info(
+            f"  Total train batch size (w. parallel, distributed & accumulation) = {total_train_batch_size:,}"
+        )
+        logger.info(
+            f"  Gradient Accumulation steps = {args.gradient_accumulation_steps}"
+        )
         logger.info(f"  Total optimization steps = {max_steps:,}")
-        logger.info(f"  Number of trainable parameters = {get_model_param_count(model, trainable_only=True):,}")
+        logger.info(
+            f"  Number of trainable parameters = {get_model_param_count(model, trainable_only=True):,}"
+        )
 
         self.state.epoch = 0
         start_time = time.time()
@@ -339,19 +413,27 @@ class MMEBTrainer(Trainer):
         if resume_from_checkpoint is not None and os.path.isfile(
             os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
         ):
-            self.state = TrainerState.load_from_json(os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME))
+            self.state = TrainerState.load_from_json(
+                os.path.join(resume_from_checkpoint, TRAINER_STATE_NAME)
+            )
             self.compare_trainer_and_checkpoint_args(self.args, self.state)
             self._load_callback_state()
             epochs_trained = int(self.state.global_step // num_update_steps_per_epoch)
             if not args.ignore_data_skip:
-                steps_trained_in_current_epoch = self.state.global_step % (num_update_steps_per_epoch)
+                steps_trained_in_current_epoch = self.state.global_step % (
+                    num_update_steps_per_epoch
+                )
                 steps_trained_in_current_epoch *= args.gradient_accumulation_steps
             else:
                 steps_trained_in_current_epoch = 0
 
-            logger.info("  Continuing training from checkpoint, will skip to saved global_step")
+            logger.info(
+                "  Continuing training from checkpoint, will skip to saved global_step"
+            )
             logger.info(f"  Continuing training from epoch {epochs_trained}")
-            logger.info(f"  Continuing training from global step {self.state.global_step}")
+            logger.info(
+                f"  Continuing training from global step {self.state.global_step}"
+            )
             if not args.ignore_data_skip:
                 logger.info(
                     f"  Will skip the first {epochs_trained} epochs then the first"
@@ -377,7 +459,9 @@ class MMEBTrainer(Trainer):
         self._globalstep_last_logged = self.state.global_step
         model.zero_grad()
         grad_norm: Optional[float] = None
-        self.control = self.callback_handler.on_train_begin(args, self.state, self.control)
+        self.control = self.callback_handler.on_train_begin(
+            args, self.state, self.control
+        )
 
         if args.eval_on_start:
             self._evaluate(trial, ignore_keys_for_eval, skip_scheduler=True)
@@ -398,15 +482,23 @@ class MMEBTrainer(Trainer):
                 if len_dataloader is not None
                 else args.max_steps * args.gradient_accumulation_steps
             )
-            self.control = self.callback_handler.on_epoch_begin(args, self.state, self.control)
+            self.control = self.callback_handler.on_epoch_begin(
+                args, self.state, self.control
+            )
 
-            if epoch == epochs_trained and resume_from_checkpoint is not None and steps_trained_in_current_epoch == 0:
+            if (
+                epoch == epochs_trained
+                and resume_from_checkpoint is not None
+                and steps_trained_in_current_epoch == 0
+            ):
                 self._load_rng_state(resume_from_checkpoint)
 
             rng_to_sync = False
             steps_skipped = 0
             if steps_trained_in_current_epoch > 0:
-                epoch_dataloader = skip_first_batches(epoch_dataloader, steps_trained_in_current_epoch)
+                epoch_dataloader = skip_first_batches(
+                    epoch_dataloader, steps_trained_in_current_epoch
+                )
                 steps_skipped = steps_trained_in_current_epoch
                 steps_trained_in_current_epoch = 0
                 rng_to_sync = True
@@ -422,19 +514,26 @@ class MMEBTrainer(Trainer):
             total_updates = steps_in_epoch // args.gradient_accumulation_steps + 1
             for _ in range(total_updates):
                 update_step += 1
-                num_batches = args.gradient_accumulation_steps if update_step != (total_updates - 1) else remainder
-                batch_samples, num_items_in_batch = self.get_batch_samples(epoch_iterator, num_batches)
+                num_batches = (
+                    args.gradient_accumulation_steps
+                    if update_step != (total_updates - 1)
+                    else remainder
+                )
+                batch_samples, num_items_in_batch = self.get_batch_samples(
+                    epoch_iterator, num_batches
+                )
                 for i, inputs in enumerate(batch_samples):
                     step += 1
                     total_batched_samples += 1
 
-                    dataset_stat = collections.Counter(inputs[0]['global_dataset_name'])
+                    dataset_stat = collections.Counter(inputs[0]["global_dataset_name"])
                     # print_rank(f"dataset name: {str(set(inputs[0]['global_dataset_name']))}")
                     # for dname, count in sorted(dataset_stat.items(), key=lambda t:t[1], reverse=True):
                     #     print_rank(f"\t\tdataset_name={dname}, count={count}")
 
                     is_last_step_and_steps_less_than_grad_acc = (
-                        steps_in_epoch <= args.gradient_accumulation_steps and (step + 1) == steps_in_epoch
+                        steps_in_epoch <= args.gradient_accumulation_steps
+                        and (step + 1) == steps_in_epoch
                     )
                     do_sync_step = is_last_step_and_steps_less_than_grad_acc or (
                         total_batched_samples % args.gradient_accumulation_steps == 0
@@ -446,7 +545,9 @@ class MMEBTrainer(Trainer):
                         self.accelerator.gradient_state._set_sync_gradients(True)
 
                     if self.args.include_num_input_tokens_seen:
-                        main_input_name = getattr(self.model, "main_input_name", "input_ids")
+                        main_input_name = getattr(
+                            self.model, "main_input_name", "input_ids"
+                        )
                         if main_input_name not in inputs:
                             logger.warning(
                                 "Tried to track the number of tokens seen, however the current model is "
@@ -455,8 +556,12 @@ class MMEBTrainer(Trainer):
                             )
                         else:
                             input_tokens = inputs[main_input_name].numel()
-                            input_tokens = torch.tensor(input_tokens, device=self.args.device, dtype=torch.int64)
-                            self.state.num_input_tokens_seen += self.accelerator.gather(input_tokens).cpu().item()
+                            input_tokens = torch.tensor(
+                                input_tokens, device=self.args.device, dtype=torch.int64
+                            )
+                            self.state.num_input_tokens_seen += (
+                                self.accelerator.gather(input_tokens).cpu().item()
+                            )
                     if rng_to_sync:
                         self._load_rng_state(resume_from_checkpoint)
                         rng_to_sync = False
@@ -474,7 +579,9 @@ class MMEBTrainer(Trainer):
                         steps_trained_progress_bar = None
 
                     if step % args.gradient_accumulation_steps == 0:
-                        self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+                        self.control = self.callback_handler.on_step_begin(
+                            args, self.state, self.control
+                        )
 
                     # We explicitly want to avoid relying on `accelerator.accumulate` for generation training
                     context = (
@@ -483,7 +590,9 @@ class MMEBTrainer(Trainer):
                         else contextlib.nullcontext
                     )
                     with context():
-                        tr_loss_step = self.training_step(model, inputs, num_items_in_batch)
+                        tr_loss_step = self.training_step(
+                            model, inputs, num_items_in_batch
+                        )
 
                     if (
                         args.logging_nan_inf_filter
@@ -491,7 +600,9 @@ class MMEBTrainer(Trainer):
                         and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
                     ):
                         # if loss is nan or inf simply add the average of previous logged losses
-                        tr_loss = tr_loss + tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                        tr_loss = tr_loss + tr_loss / (
+                            1 + self.state.global_step - self._globalstep_last_logged
+                        )
                     else:
                         if tr_loss.device != tr_loss_step.device:
                             raise ValueError(
@@ -523,7 +634,8 @@ class MMEBTrainer(Trainer):
 
                             if (
                                 is_accelerate_available()
-                                and self.accelerator.distributed_type == DistributedType.DEEPSPEED
+                                and self.accelerator.distributed_type
+                                == DistributedType.DEEPSPEED
                             ):
                                 grad_norm = model.get_global_grad_norm()
                                 # In some cases the grad norm may not return a float
@@ -532,30 +644,56 @@ class MMEBTrainer(Trainer):
                             else:
                                 grad_norm = _grad_norm
 
-                        self.control = self.callback_handler.on_pre_optimizer_step(args, self.state, self.control)
+                        self.control = self.callback_handler.on_pre_optimizer_step(
+                            args, self.state, self.control
+                        )
 
                         self.optimizer.step()
 
-                        self.control = self.callback_handler.on_optimizer_step(args, self.state, self.control)
+                        self.control = self.callback_handler.on_optimizer_step(
+                            args, self.state, self.control
+                        )
 
-                        optimizer_was_run = not self.accelerator.optimizer_step_was_skipped
+                        optimizer_was_run = (
+                            not self.accelerator.optimizer_step_was_skipped
+                        )
                         if optimizer_was_run:
                             # Delay optimizer scheduling until metrics are generated
-                            if not isinstance(self.lr_scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+                            if not isinstance(
+                                self.lr_scheduler,
+                                torch.optim.lr_scheduler.ReduceLROnPlateau,
+                            ):
                                 self.lr_scheduler.step()
 
                         model.zero_grad()
                         self.state.global_step += 1
-                        self.state.epoch = epoch + (step + 1 + steps_skipped) / steps_in_epoch
-                        self.control = self.callback_handler.on_step_end(args, self.state, self.control)
-                        self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, time.time())
+                        self.state.epoch = (
+                            epoch + (step + 1 + steps_skipped) / steps_in_epoch
+                        )
+                        self.control = self.callback_handler.on_step_end(
+                            args, self.state, self.control
+                        )
+                        self._maybe_log_save_evaluate(
+                            tr_loss,
+                            grad_norm,
+                            model,
+                            trial,
+                            epoch,
+                            ignore_keys_for_eval,
+                            time.time(),
+                        )
                     else:
-                        self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+                        self.control = self.callback_handler.on_substep_end(
+                            args, self.state, self.control
+                        )
 
                     # PyTorch/XLA relies on the data loader to insert the mark_step for
                     # each step. Since we are breaking the loop early, we need to manually
                     # insert the mark_step here.
-                    if self.control.should_epoch_stop or self.control.should_training_stop:
+                    if (
+                        self.control.should_epoch_stop
+                        or self.control.should_training_stop
+                    ):
                         if is_torch_xla_available():
                             xm.mark_step()
                         break
@@ -572,8 +710,18 @@ class MMEBTrainer(Trainer):
                 )
                 self.control.should_training_stop = True
 
-            self.control = self.callback_handler.on_epoch_end(args, self.state, self.control)
-            self._maybe_log_save_evaluate(tr_loss, grad_norm, model, trial, epoch, ignore_keys_for_eval, time.time())
+            self.control = self.callback_handler.on_epoch_end(
+                args, self.state, self.control
+            )
+            self._maybe_log_save_evaluate(
+                tr_loss,
+                grad_norm,
+                model,
+                trial,
+                epoch,
+                ignore_keys_for_eval,
+                time.time(),
+            )
 
             if self.control.should_training_stop:
                 break
@@ -582,7 +730,9 @@ class MMEBTrainer(Trainer):
             # Clean the state at the end of training
             delattr(self, "_past")
 
-        logger.info("\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n")
+        logger.info(
+            "\n\nTraining completed. Do not forget to share your model on huggingface.co/models =)\n\n"
+        )
         if args.load_best_model_at_end and self.state.best_model_checkpoint is not None:
             # Wait for everyone to get here so we are sure the model has been saved by process 0.
             if is_torch_xla_available():
@@ -594,7 +744,9 @@ class MMEBTrainer(Trainer):
 
         # add remaining tr_loss
         self._total_loss_scalar += tr_loss.item()
-        effective_global_step = max(self.state.global_step, 0.001)  # Avoid ZeroDivisionError
+        effective_global_step = max(
+            self.state.global_step, 0.001
+        )  # Avoid ZeroDivisionError
         train_loss = self._total_loss_scalar / effective_global_step
 
         metrics = speed_metrics(
@@ -615,16 +767,26 @@ class MMEBTrainer(Trainer):
         self.log(metrics)
 
         run_dir = self._get_output_dir(trial)
-        checkpoints_sorted = self._sorted_checkpoints(use_mtime=False, output_dir=run_dir)
+        checkpoints_sorted = self._sorted_checkpoints(
+            use_mtime=False, output_dir=run_dir
+        )
 
         # Delete the last checkpoint when save_total_limit=1 if it's different from the best checkpoint and process allowed to save.
-        if self.args.should_save and self.state.best_model_checkpoint is not None and self.args.save_total_limit == 1:
+        if (
+            self.args.should_save
+            and self.state.best_model_checkpoint is not None
+            and self.args.save_total_limit == 1
+        ):
             for checkpoint in checkpoints_sorted:
                 if not os.path.samefile(checkpoint, self.state.best_model_checkpoint):
-                    logger.info(f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit")
+                    logger.info(
+                        f"Deleting older checkpoint [{checkpoint}] due to args.save_total_limit"
+                    )
                     shutil.rmtree(checkpoint, ignore_errors=True)
 
-        self.control = self.callback_handler.on_train_end(args, self.state, self.control)
+        self.control = self.callback_handler.on_train_end(
+            args, self.state, self.control
+        )
 
         # Wait for the checkpoint to be uploaded.
         self._finish_current_push()
@@ -641,6 +803,7 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
     """
     Adapted from gradcache repo.
     """
+
     def __init__(self, *args, **kwargs):
         self.max_length = kwargs.get("max_length", 512)
         if "max_length" in kwargs:
@@ -651,7 +814,9 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
         super(GradCacheLateProcessTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
         self._dist_loss_scale_factor = dist.get_world_size() if self.is_ddp else 1
-        loss_fn_cls = DistributedContrastiveLoss if self.is_ddp else SimpleContrastiveLoss
+        loss_fn_cls = (
+            DistributedContrastiveLoss if self.is_ddp else SimpleContrastiveLoss
+        )
         loss_fn = loss_fn_cls(temperature=self.model.temperature)
         # process_fn = functools.partial(process_vlm_inputs_fns[self.args.model_backbone], processor=self.processing_class, max_length=self.max_length)
 
@@ -663,7 +828,7 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
             # process_fn=process_fn,
             get_rep_fn=get_dense_rep,
             fp16=self.args.fp16,
-            scaler=self.scaler if self.args.fp16 else None
+            scaler=self.scaler if self.args.fp16 else None,
         )
 
     def training_step(self, model, inputs, *args, **kwargs) -> torch.Tensor:
@@ -674,13 +839,12 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
 
         _distributed = dist.is_initialized() and dist.get_world_size() > 1
         if _distributed:
-            gc_queries, gc_targets = {'qry': queries}, {'tgt': targets}
+            gc_queries, gc_targets = {"qry": queries}, {"tgt": targets}
             self.gc.models = [model, model]
             loss = self.gc(gc_queries, gc_targets, no_sync_except_last=True)
         else:
             loss = model(queries, targets)
         return loss / self._dist_loss_scale_factor
-
 
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         print_master(f"Saving model to {output_dir}")
@@ -688,15 +852,19 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
 
         if state_dict is None:
             state_dict = self.model.state_dict()
-        prefix = 'encoder.'
-        assert all(k.startswith(prefix) for k in state_dict.keys()), list(state_dict.keys())
-        state_dict = {k[len(prefix):]: v for k, v in state_dict.items()}
+        prefix = "encoder."
+        assert all(k.startswith(prefix) for k in state_dict.keys()), list(
+            state_dict.keys()
+        )
+        state_dict = {k[len(prefix) :]: v for k, v in state_dict.items()}
         self.model.encoder.save_pretrained(
-            output_dir, state_dict=state_dict, safe_serialization=self.args.save_safetensors
+            output_dir,
+            state_dict=state_dict,
+            safe_serialization=self.args.save_safetensors,
         )
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-        self.model.encoder.config.to_json_file(os.path.join(output_dir, 'config.json'))
+        self.model.encoder.config.to_json_file(os.path.join(output_dir, "config.json"))

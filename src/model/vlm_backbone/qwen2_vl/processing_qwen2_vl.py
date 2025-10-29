@@ -26,6 +26,7 @@ from typing import List, Union
 
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_utils import ImageInput
+
 try:
     # transformers>=4.52
     from transformers.video_utils import VideoInput
@@ -69,19 +70,29 @@ class Qwen2VLProcessor(ProcessorMixin):
     image_processor_class = "Qwen2VLImageProcessor"
     tokenizer_class = ("Qwen2Tokenizer", "Qwen2TokenizerFast")
 
-    def __init__(self, image_processor=None, tokenizer=None, chat_template=None, **kwargs):
-        self.image_token = "<|image_pad|>" if not hasattr(tokenizer, "image_token") else tokenizer.image_token
-        self.video_token = "<|video_pad|>" if not hasattr(tokenizer, "video_token") else tokenizer.video_token
+    def __init__(
+        self, image_processor=None, tokenizer=None, chat_template=None, **kwargs
+    ):
+        self.image_token = (
+            "<|image_pad|>"
+            if not hasattr(tokenizer, "image_token")
+            else tokenizer.image_token
+        )
+        self.video_token = (
+            "<|video_pad|>"
+            if not hasattr(tokenizer, "video_token")
+            else tokenizer.video_token
+        )
         super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
     @staticmethod
     def get_possibly_dynamic_module(module_name):
         # @rui: a workaround to address this change, https://github.com/huggingface/transformers/commit/9215cc62d4366072aacafa4e44028c1ca187167b#diff-6505546ec5a9ab74b2ce6511681dd31194eb91e9fa3ce26282e487a5e61f9356L1102
-        if module_name == 'Qwen2VLImageProcessor':
+        if module_name == "Qwen2VLImageProcessor":
             return Qwen2VLImageProcessor
-        elif module_name == 'Qwen2Tokenizer':
+        elif module_name == "Qwen2Tokenizer":
             return Qwen2Tokenizer
-        elif module_name == 'Qwen2TokenizerFast':
+        elif module_name == "Qwen2TokenizerFast":
             return Qwen2TokenizerFast
         else:
             raise NotImplementedError
@@ -89,7 +100,9 @@ class Qwen2VLProcessor(ProcessorMixin):
     def __call__(
         self,
         images: ImageInput = None,
-        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
+        text: Union[
+            TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]
+        ] = None,
         videos: VideoInput = None,
         **kwargs: Unpack[Qwen2VLProcessorKwargs],
     ) -> BatchFeature:
@@ -135,14 +148,18 @@ class Qwen2VLProcessor(ProcessorMixin):
             **kwargs,
         )
         if images is not None:
-            image_inputs = self.image_processor(images=images, videos=None, **output_kwargs["images_kwargs"])
+            image_inputs = self.image_processor(
+                images=images, videos=None, **output_kwargs["images_kwargs"]
+            )
             image_grid_thw = image_inputs["image_grid_thw"]
         else:
             image_inputs = {}
             image_grid_thw = None
 
         if videos is not None:
-            videos_inputs = self.image_processor(images=None, videos=videos, **output_kwargs["videos_kwargs"])
+            videos_inputs = self.image_processor(
+                images=None, videos=videos, **output_kwargs["videos_kwargs"]
+            )
             video_grid_thw = videos_inputs["video_grid_thw"]
         else:
             videos_inputs = {}
@@ -157,7 +174,10 @@ class Qwen2VLProcessor(ProcessorMixin):
             for i in range(len(text)):
                 while self.image_token in text[i]:
                     text[i] = text[i].replace(
-                        self.image_token, "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length), 1
+                        self.image_token,
+                        "<|placeholder|>"
+                        * (image_grid_thw[index].prod() // merge_length),
+                        1,
                     )
                     index += 1
                 text[i] = text[i].replace("<|placeholder|>", self.image_token)
@@ -168,7 +188,10 @@ class Qwen2VLProcessor(ProcessorMixin):
             for i in range(len(text)):
                 while self.video_token in text[i]:
                     text[i] = text[i].replace(
-                        self.video_token, "<|placeholder|>" * (video_grid_thw[index].prod() // merge_length), 1
+                        self.video_token,
+                        "<|placeholder|>"
+                        * (video_grid_thw[index].prod() // merge_length),
+                        1,
                     )
                     index += 1
                 text[i] = text[i].replace("<|placeholder|>", self.video_token)
@@ -204,7 +227,9 @@ class Qwen2VLProcessor(ProcessorMixin):
             `List[str]`: The decoded text.
         """
         return self.tokenizer.batch_decode(
-            generated_outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            generated_outputs,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
         )
 
     @property

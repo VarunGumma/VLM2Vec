@@ -77,7 +77,9 @@ def temporal_random_crop(vframes, num_frames, frame_interval):
     total_frames = len(vframes)
     start_frame_ind, end_frame_ind = temporal_sample(total_frames)
     assert end_frame_ind - start_frame_ind >= num_frames
-    frame_indice = np.linspace(start_frame_ind, end_frame_ind - 1, num_frames, dtype=int)
+    frame_indice = np.linspace(
+        start_frame_ind, end_frame_ind - 1, num_frames, dtype=int
+    )
     video = vframes[frame_indice]
     return video
 
@@ -86,13 +88,17 @@ def get_transforms_video(name="center", image_size=(256, 256)):
     if name is None:
         return None
     elif name == "center":
-        assert image_size[0] == image_size[1], "image_size must be square for center crop"
+        assert (
+            image_size[0] == image_size[1]
+        ), "image_size must be square for center crop"
         transform_video = transforms.Compose(
             [
                 video_transforms.ToTensorVideo(),  # TCHW
                 # video_transforms.RandomHorizontalFlipVideo(),
                 video_transforms.UCFCenterCropVideo(image_size[0]),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True
+                ),
             ]
         )
     elif name == "resize_crop":
@@ -100,7 +106,9 @@ def get_transforms_video(name="center", image_size=(256, 256)):
             [
                 video_transforms.ToTensorVideo(),  # TCHW
                 video_transforms.ResizeCrop(image_size),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True
+                ),
             ]
         )
     else:
@@ -112,21 +120,31 @@ def get_transforms_image(name="center", image_size=(256, 256)):
     if name is None:
         return None
     elif name == "center":
-        assert image_size[0] == image_size[1], "Image size must be square for center crop"
+        assert (
+            image_size[0] == image_size[1]
+        ), "Image size must be square for center crop"
         transform = transforms.Compose(
             [
-                transforms.Lambda(lambda pil_image: center_crop_arr(pil_image, image_size[0])),
+                transforms.Lambda(
+                    lambda pil_image: center_crop_arr(pil_image, image_size[0])
+                ),
                 # transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True
+                ),
             ]
         )
     elif name == "resize_crop":
         transform = transforms.Compose(
             [
-                transforms.Lambda(lambda pil_image: resize_crop_to_fill(pil_image, image_size)),
+                transforms.Lambda(
+                    lambda pil_image: resize_crop_to_fill(pil_image, image_size)
+                ),
                 transforms.ToTensor(),
-                transforms.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True),
+                transforms.Normalize(
+                    mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5], inplace=True
+                ),
             ]
         )
     else:
@@ -134,7 +152,9 @@ def get_transforms_image(name="center", image_size=(256, 256)):
     return transform
 
 
-def read_image_from_path(path, transform=None, transform_name="center", num_frames=1, image_size=(256, 256)):
+def read_image_from_path(
+    path, transform=None, transform_name="center", num_frames=1, image_size=(256, 256)
+):
     image = pil_loader(path)
     if transform is None:
         transform = get_transforms_image(image_size=image_size, name=transform_name)
@@ -144,8 +164,12 @@ def read_image_from_path(path, transform=None, transform_name="center", num_fram
     return video
 
 
-def read_video_from_path(path, transform=None, transform_name="center", image_size=(256, 256)):
-    vframes, aframes, info = torchvision.io.read_video(filename=path, pts_unit="sec", output_format="TCHW")
+def read_video_from_path(
+    path, transform=None, transform_name="center", image_size=(256, 256)
+):
+    vframes, aframes, info = torchvision.io.read_video(
+        filename=path, pts_unit="sec", output_format="TCHW"
+    )
     if transform is None:
         transform = get_transforms_video(image_size=image_size, name=transform_name)
     video = transform(vframes)  # T C H W
@@ -158,13 +182,19 @@ def read_from_path(path, image_size, transform_name="center"):
         path = download_url(path)
     ext = os.path.splitext(path)[-1].lower()
     if ext.lower() in VID_EXTENSIONS:
-        return read_video_from_path(path, image_size=image_size, transform_name=transform_name)
+        return read_video_from_path(
+            path, image_size=image_size, transform_name=transform_name
+        )
     else:
         assert ext.lower() in IMG_EXTENSIONS, f"Unsupported file format: {ext}"
-        return read_image_from_path(path, image_size=image_size, transform_name=transform_name)
+        return read_image_from_path(
+            path, image_size=image_size, transform_name=transform_name
+        )
 
 
-def save_sample(x, fps=8, save_path=None, normalize=True, value_range=(-1, 1), force_video=False):
+def save_sample(
+    x, fps=8, save_path=None, normalize=True, value_range=(-1, 1), force_video=False
+):
     """
     Args:
         x (Tensor): shape [C, T, H, W]
@@ -181,7 +211,13 @@ def save_sample(x, fps=8, save_path=None, normalize=True, value_range=(-1, 1), f
             low, high = value_range
             x.clamp_(min=low, max=high)
             x.sub_(low).div_(max(high - low, 1e-5))
-        x = x.mul(255).add_(0.5).clamp_(0, 255).permute(1, 2, 3, 0).to("cpu", torch.uint8)
+        x = (
+            x.mul(255)
+            .add_(0.5)
+            .clamp_(0, 255)
+            .permute(1, 2, 3, 0)
+            .to("cpu", torch.uint8)
+        )
         write_video(save_path, x, fps=fps, video_codec="h264")
     print(f"Saved to {save_path}")
     return save_path
@@ -193,15 +229,21 @@ def center_crop_arr(pil_image, image_size):
     https://github.com/openai/guided-diffusion/blob/8fb3ad9197f16bbc40620447b2742e13458d2831/guided_diffusion/image_datasets.py#L126
     """
     while min(*pil_image.size) >= 2 * image_size:
-        pil_image = pil_image.resize(tuple(x // 2 for x in pil_image.size), resample=Image.BOX)
+        pil_image = pil_image.resize(
+            tuple(x // 2 for x in pil_image.size), resample=Image.BOX
+        )
 
     scale = image_size / min(*pil_image.size)
-    pil_image = pil_image.resize(tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC)
+    pil_image = pil_image.resize(
+        tuple(round(x * scale) for x in pil_image.size), resample=Image.BICUBIC
+    )
 
     arr = np.array(pil_image)
     crop_y = (arr.shape[0] - image_size) // 2
     crop_x = (arr.shape[1] - image_size) // 2
-    return Image.fromarray(arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size])
+    return Image.fromarray(
+        arr[crop_y : crop_y + image_size, crop_x : crop_x + image_size]
+    )
 
 
 def resize_crop_to_fill(pil_image, image_size):
@@ -225,7 +267,7 @@ def resize_crop_to_fill(pil_image, image_size):
 
 # adopted from LLaVA-Hound-DPO
 def get_image(image_path):
-    image = Image.open(image_path).convert('RGB')
+    image = Image.open(image_path).convert("RGB")
     return image
 
 
@@ -233,9 +275,13 @@ def load_frames(frames_dir, filter_func=None):
     """
     Load image frames from a directory, with an optional filter function.
     """
+
     def natural_sort_key(filename):
         """Extract numbers from filenames for correct sorting."""
-        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', filename)]
+        return [
+            int(text) if text.isdigit() else text.lower()
+            for text in re.split(r"(\d+)", filename)
+        ]
 
     results = []
     if not os.path.exists(frames_dir) or not os.path.isdir(frames_dir):
@@ -253,7 +299,7 @@ def load_frames(frames_dir, filter_func=None):
 
 def sample_frames(frames, num_segments):
     duration = len(frames)
-    frame_id_array = np.linspace(0, duration-1, num_segments, dtype=int)
+    frame_id_array = np.linspace(0, duration - 1, num_segments, dtype=int)
     frame_id_list = frame_id_array.tolist()
     last_frame_id = frame_id_list[-1]
 
@@ -284,11 +330,13 @@ def process_video_frames(frame_dir, num_frames=None):
     return frames
 
 
-def save_frames(video_path, frame_dir, max_frames_saved, file_name_prefix=''):
+def save_frames(video_path, frame_dir, max_frames_saved, file_name_prefix=""):
     """
     Saves frames if only raw video is available.
     """
-    if (not os.path.exists(frame_dir) or not any(f.lower().endswith(tuple(IMAGE_EXTENSIONS)) for f in os.listdir(frame_dir))):
+    if not os.path.exists(frame_dir) or not any(
+        f.lower().endswith(tuple(IMAGE_EXTENSIONS)) for f in os.listdir(frame_dir)
+    ):
         if not os.path.exists(video_path):
             raise FileNotFoundError(f"File {video_path} does not exist")
         os.makedirs(frame_dir, exist_ok=True)
@@ -305,11 +353,15 @@ def save_frames(video_path, frame_dir, max_frames_saved, file_name_prefix=''):
         output_pattern = os.path.join(frame_dir, "frame_%04d.jpg")
         cmd = [
             "ffmpeg",
-            "-v", "error",
-            "-i", video_path,
-            "-vf", f"select='{select_expr}'",
-            "-vsync", "vfr",  # ensure only selected frames are output
-            output_pattern
+            "-v",
+            "error",
+            "-i",
+            video_path,
+            "-vf",
+            f"select='{select_expr}'",
+            "-vsync",
+            "vfr",  # ensure only selected frames are output
+            output_pattern,
         ]
         subprocess.run(cmd, check=True)
 
@@ -317,12 +369,17 @@ def save_frames(video_path, frame_dir, max_frames_saved, file_name_prefix=''):
 def get_total_frames(video_path):
     """Use ffprobe to get total frame count."""
     cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
         "-count_frames",
-        "-show_entries", "stream=nb_read_frames",
-        "-of", "default=nokey=1:noprint_wrappers=1",
-        video_path
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "default=nokey=1:noprint_wrappers=1",
+        video_path,
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, check=True)
     output = result.stdout.strip()
@@ -332,17 +389,25 @@ def get_total_frames(video_path):
 
     # Fallback: use nb_frames (less reliable but often available)
     fallback_cmd = [
-        "ffprobe", "-v", "error",
-        "-select_streams", "v:0",
-        "-show_entries", "stream=nb_frames",
-        "-of", "default=nokey=1:noprint_wrappers=1",
-        video_path
+        "ffprobe",
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=nb_frames",
+        "-of",
+        "default=nokey=1:noprint_wrappers=1",
+        video_path,
     ]
-    fallback_result = subprocess.run(fallback_cmd, capture_output=True, text=True, check=True)
+    fallback_result = subprocess.run(
+        fallback_cmd, capture_output=True, text=True, check=True
+    )
     fallback_output = fallback_result.stdout.strip()
 
     if fallback_output.isdigit():
         return int(fallback_output)
 
     raise ValueError(
-        f"Could not determine total frames for {video_path}. Outputs: '{output}', fallback: '{fallback_output}'")
+        f"Could not determine total frames for {video_path}. Outputs: '{output}', fallback: '{fallback_output}'"
+    )

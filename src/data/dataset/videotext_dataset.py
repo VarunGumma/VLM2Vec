@@ -5,7 +5,13 @@ import torch
 import torchvision
 from torchvision.datasets.folder import IMG_EXTENSIONS, pil_loader
 
-from ..utils.vision_utils import VID_EXTENSIONS, get_transforms_image, get_transforms_video, read_file, temporal_random_crop
+from ..utils.vision_utils import (
+    VID_EXTENSIONS,
+    get_transforms_image,
+    get_transforms_video,
+    read_file,
+    temporal_random_crop,
+)
 
 import random
 
@@ -66,7 +72,9 @@ class VideoTextDataset(torch.utils.data.Dataset):
 
         if file_type == "video":
             # loading
-            vframes, _, _ = torchvision.io.read_video(filename=path, pts_unit="sec", output_format="TCHW")
+            vframes, _, _ = torchvision.io.read_video(
+                filename=path, pts_unit="sec", output_format="TCHW"
+            )
 
             # Sampling video frames
             video = temporal_random_crop(vframes, self.num_frames, self.frame_interval)
@@ -113,7 +121,9 @@ class VariableVideoTextDataset(VideoTextDataset):
         image_size=None,
         transform_name=None,
     ):
-        super().__init__(data_path, num_frames, frame_interval, image_size, transform_name=None)
+        super().__init__(
+            data_path, num_frames, frame_interval, image_size, transform_name=None
+        )
         self.transform_name = transform_name
         self.data["id"] = np.arange(len(self.data))
 
@@ -136,7 +146,9 @@ class VariableVideoTextDataset(VideoTextDataset):
         video_fps = 24  # default fps
         if file_type == "video":
             # loading
-            vframes, _, infos = torchvision.io.read_video(filename=path, pts_unit="sec", output_format="TCHW")
+            vframes, _, infos = torchvision.io.read_video(
+                filename=path, pts_unit="sec", output_format="TCHW"
+            )
             if "video_fps" in infos:
                 video_fps = infos["video_fps"]
 
@@ -160,7 +172,6 @@ class VariableVideoTextDataset(VideoTextDataset):
 
         # TCHW -> CTHW
         video = video.permute(1, 0, 2, 3)
-
 
         return {
             "video": video,

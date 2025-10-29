@@ -12,6 +12,7 @@ from torch.optim.lr_scheduler import LRScheduler
 
 from transformers import AutoModel
 
+
 class KeyframeLR(LRScheduler):
     def __init__(
         self,
@@ -217,15 +218,24 @@ class KeyframeLR(LRScheduler):
             print(frame)
 
 
-def get_linear_schedule_with_warmup(optimizer, lr_max, num_warmup_steps, num_training_steps, last_epoch=-1):
+def get_linear_schedule_with_warmup(
+    optimizer, lr_max, num_warmup_steps, num_training_steps, last_epoch=-1
+):
     def lr_lambda(current_step):
-        learning_rate = max(0.0, 1.0 - (float(current_step) / float(num_training_steps)))
-        learning_rate *= lr_max * min(1.0, float(current_step) / float(num_warmup_steps))
+        learning_rate = max(
+            0.0, 1.0 - (float(current_step) / float(num_training_steps))
+        )
+        learning_rate *= lr_max * min(
+            1.0, float(current_step) / float(num_warmup_steps)
+        )
         return learning_rate
+
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
 
-def get_exponential_schedule_with_warmup(optimizer, lr_max, lr_end, num_warmup_steps, num_training_steps, last_epoch=-1):
+def get_exponential_schedule_with_warmup(
+    optimizer, lr_max, lr_end, num_warmup_steps, num_training_steps, last_epoch=-1
+):
     scheduler = KeyframeLR(
         optimizer=optimizer,
         units="steps",
@@ -238,8 +248,10 @@ def get_exponential_schedule_with_warmup(optimizer, lr_max, lr_end, num_warmup_s
     )
     return scheduler
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     import matplotlib.pyplot as plt
+
     lr_max = 1e-4
     lr_end = 1e-5
     power = 5.0
@@ -253,8 +265,12 @@ if __name__ == '__main__':
     # scheduler = get_exponential_schedule_with_warmup(optimizer, lr_max=1e-4, lr_end=1e-6, num_warmup_steps=1000, num_training_steps=10000)
 
     # transformers LR scheduler
-    scheduler = transformers.get_linear_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps)
-    scheduler = transformers.get_polynomial_decay_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, lr_end=lr_end, power=power)
+    scheduler = transformers.get_linear_schedule_with_warmup(
+        optimizer, num_warmup_steps, num_training_steps
+    )
+    scheduler = transformers.get_polynomial_decay_schedule_with_warmup(
+        optimizer, num_warmup_steps, num_training_steps, lr_end=lr_end, power=power
+    )
     lrs = []
     for i in range(num_training_steps):
         optimizer.step()

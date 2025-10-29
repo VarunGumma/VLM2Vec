@@ -28,16 +28,23 @@ from typing import List, Union
 
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_utils import ImageInput
+
 try:
     # transformers>=4.52
     from transformers.video_utils import VideoInput
 except ImportError:
     from transformers.image_utils import VideoInput
 
-from transformers.processing_utils import ProcessingKwargs, ProcessorMixin, Unpack, VideosKwargs
+from transformers.processing_utils import (
+    ProcessingKwargs,
+    ProcessorMixin,
+    Unpack,
+    VideosKwargs,
+)
 from transformers.tokenization_utils_base import PreTokenizedInput, TextInput
 
 from ...utils import get_select_mask
+
 
 class Qwen2_5_VLVideosProcessorKwargs(VideosKwargs, total=False):
     fps: Union[List[float], float]
@@ -73,27 +80,47 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
     image_processor_class = "Qwen2_5_VLImageProcessor"
     tokenizer_class = ("Qwen2Tokenizer", "Qwen2TokenizerFast")
 
-    def __init__(self, image_processor=None, tokenizer=None, chat_template=None, **kwargs):
-        self.image_token = "<|image_pad|>" if not hasattr(tokenizer, "image_token") else tokenizer.image_token
-        self.video_token = "<|video_pad|>" if not hasattr(tokenizer, "video_token") else tokenizer.video_token
+    def __init__(
+        self, image_processor=None, tokenizer=None, chat_template=None, **kwargs
+    ):
+        self.image_token = (
+            "<|image_pad|>"
+            if not hasattr(tokenizer, "image_token")
+            else tokenizer.image_token
+        )
+        self.video_token = (
+            "<|video_pad|>"
+            if not hasattr(tokenizer, "video_token")
+            else tokenizer.video_token
+        )
         super().__init__(image_processor, tokenizer, chat_template=chat_template)
 
         ### ShowUI preprocessor options
         # Screenshot -> Graph
-        self.uigraph_use = kwargs.get("uigraph_use", False)          # Enable ui graph
-        self.uigraph_diff = kwargs.get("uigraph_diff", 1)           # Pixel difference used for constructing ui graph
-        self.uigraph_rand = kwargs.get("uigraph_rand", False)       # Enable random graph construction
+        self.uigraph_use = kwargs.get("uigraph_use", False)  # Enable ui graph
+        self.uigraph_diff = kwargs.get(
+            "uigraph_diff", 1
+        )  # Pixel difference used for constructing ui graph
+        self.uigraph_rand = kwargs.get(
+            "uigraph_rand", False
+        )  # Enable random graph construction
         # Graph -> Mask
-        self.uimask_ratio = kwargs.get("uimask_ratio", 0)           # Specify the percentage of patch tokens to skip per component
-        self.uimask_rand = kwargs.get("uimask_rand", False)         # Enable random token selection instead of uniform selection
+        self.uimask_ratio = kwargs.get(
+            "uimask_ratio", 0
+        )  # Specify the percentage of patch tokens to skip per component
+        self.uimask_rand = kwargs.get(
+            "uimask_rand", False
+        )  # Enable random token selection instead of uniform selection
 
     def __call__(
         self,
         images: ImageInput = None,
-        text: Union[TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]] = None,
+        text: Union[
+            TextInput, PreTokenizedInput, List[TextInput], List[PreTokenizedInput]
+        ] = None,
         videos: VideoInput = None,
         vis_dir: str = None,
-        training = False,
+        training=False,
         **kwargs: Unpack[Qwen2_5_VLProcessorKwargs],
     ) -> BatchFeature:
         """
@@ -142,12 +169,13 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
         )
         if images is not None:
             image_inputs = self.image_processor(
-                images=images, videos=None, 
-                uigraph_use=self.uigraph_use, 
-                uigraph_diff=self.uigraph_diff, 
-                uigraph_rand=self.uigraph_rand, 
+                images=images,
+                videos=None,
+                uigraph_use=self.uigraph_use,
+                uigraph_diff=self.uigraph_diff,
+                uigraph_rand=self.uigraph_rand,
                 vis_dir=vis_dir,
-                **output_kwargs["images_kwargs"]
+                **output_kwargs["images_kwargs"],
             )
             image_grid_thw = image_inputs["image_grid_thw"]
             patch_assign_len = image_inputs["patch_assign_len"]
@@ -157,14 +185,20 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
             patch_assign_len = None
 
         if videos is not None:
-            videos_inputs = self.image_processor(images=None, videos=videos, **output_kwargs["images_kwargs"])
+            videos_inputs = self.image_processor(
+                images=None, videos=videos, **output_kwargs["images_kwargs"]
+            )
             video_grid_thw = videos_inputs["video_grid_thw"]
 
             fps = output_kwargs["videos_kwargs"].pop("fps", 2.0)
             if isinstance(fps, (int, float)):
-                second_per_grid_ts = [self.image_processor.temporal_patch_size / fps] * len(video_grid_thw)
+                second_per_grid_ts = [
+                    self.image_processor.temporal_patch_size / fps
+                ] * len(video_grid_thw)
             elif hasattr(fps, "__len__") and len(fps) == len(video_grid_thw):
-                second_per_grid_ts = [self.image_processor.temporal_patch_size / tmp for tmp in fps]
+                second_per_grid_ts = [
+                    self.image_processor.temporal_patch_size / tmp for tmp in fps
+                ]
             else:
                 raise ValueError(
                     f"The length of fps ({len(fps) if hasattr(fps, '__len__') else fps}) must be equal to the length of video_grid_thw ({len(video_grid_thw)}) or fps should be a single number."
@@ -185,7 +219,8 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
                 while self.image_token in text[i]:
                     text[i] = text[i].replace(
                         self.image_token,
-                        "<|placeholder|>" * (image_grid_thw[index].prod() // merge_length),
+                        "<|placeholder|>"
+                        * (image_grid_thw[index].prod() // merge_length),
                         1,
                     )
                     index += 1
@@ -198,7 +233,8 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
                 while self.video_token in text[i]:
                     text[i] = text[i].replace(
                         self.video_token,
-                        "<|placeholder|>" * (video_grid_thw[index].prod() // merge_length),
+                        "<|placeholder|>"
+                        * (video_grid_thw[index].prod() // merge_length),
                         1,
                     )
                     index += 1
@@ -208,29 +244,38 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
 
         # ui graph
         if patch_assign_len is not None:
-            num_img = len(image_inputs['patch_assign_len'])
+            num_img = len(image_inputs["patch_assign_len"])
             cur_img_idx = 0
             pre_start = 0
             # patch_pos indicates the position of visual patch in the full input seq
-            text_inputs['patch_pos'] = np.zeros_like(text_inputs['input_ids']) -1
-            assert text_inputs['input_ids'].shape[0] == 1, "Only support batch size 1 for processing"
+            text_inputs["patch_pos"] = np.zeros_like(text_inputs["input_ids"]) - 1
+            assert (
+                text_inputs["input_ids"].shape[0] == 1
+            ), "Only support batch size 1 for processing"
             i = 0
-            while i < len(text_inputs['input_ids'][0]):
+            while i < len(text_inputs["input_ids"][0]):
                 # assume here is 1 x L
-                if text_inputs['input_ids'][0, i] == 151655:   # <|image_pad|> token
-                    cur_img_len = image_inputs['image_grid_thw'][cur_img_idx].prod() // merge_length
-                    text_inputs['patch_pos'][0, i: i+cur_img_len] = image_inputs['patch_assign'][pre_start: pre_start+cur_img_len]
+                if text_inputs["input_ids"][0, i] == 151655:  # <|image_pad|> token
+                    cur_img_len = (
+                        image_inputs["image_grid_thw"][cur_img_idx].prod()
+                        // merge_length
+                    )
+                    text_inputs["patch_pos"][0, i : i + cur_img_len] = image_inputs[
+                        "patch_assign"
+                    ][pre_start : pre_start + cur_img_len]
                     cur_img_idx += 1
                     pre_start += cur_img_len
                     i += cur_img_len
                 else:
                     i += 1
-            
-            text_inputs['select_mask'] = np.expand_dims(
-                get_select_mask(text_inputs['patch_pos'][0],
-                                skip_ratio=self.uimask_ratio,
-                                rand=(training and self.uimask_rand)),
-                axis=0
+
+            text_inputs["select_mask"] = np.expand_dims(
+                get_select_mask(
+                    text_inputs["patch_pos"][0],
+                    skip_ratio=self.uimask_ratio,
+                    rand=(training and self.uimask_rand),
+                ),
+                axis=0,
             )
 
         return BatchFeature(data={**text_inputs, **image_inputs, **videos_inputs})
@@ -262,7 +307,9 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
             `List[str]`: The decoded text.
         """
         return self.tokenizer.batch_decode(
-            generated_outputs, skip_special_tokens=True, clean_up_tokenization_spaces=False
+            generated_outputs,
+            skip_special_tokens=True,
+            clean_up_tokenization_spaces=False,
         )
 
     @property

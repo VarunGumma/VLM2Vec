@@ -1,13 +1,18 @@
 """
 Based on datasets combine.py and iterable_dataset.py
 """
+
 from itertools import cycle
 from typing import List, Optional, TypeVar
 
 from datasets.arrow_dataset import Dataset, _interleave_map_style_datasets
 from datasets.dataset_dict import DatasetDict, IterableDatasetDict
-from datasets.iterable_dataset import IterableDataset, CyclingMultiSourcesExamplesIterable, \
-    RandomlyCyclingMultiSourcesExamplesIterable, _BaseExamplesIterable
+from datasets.iterable_dataset import (
+    IterableDataset,
+    CyclingMultiSourcesExamplesIterable,
+    RandomlyCyclingMultiSourcesExamplesIterable,
+    _BaseExamplesIterable,
+)
 from datasets.utils import logging
 from copy import deepcopy
 from typing import Iterator, List, Optional
@@ -15,7 +20,12 @@ from typing import Iterator, List, Optional
 import numpy as np
 from datasets.arrow_dataset import Dataset, DatasetInfoMixin
 from datasets.features import Features
-from datasets.features.features import FeatureType, _align_features, _check_if_features_can_be_aligned, cast_to_python_objects
+from datasets.features.features import (
+    FeatureType,
+    _align_features,
+    _check_if_features_can_be_aligned,
+    cast_to_python_objects,
+)
 from datasets.info import DatasetInfo
 from datasets.splits import NamedSplit
 from datasets.utils.py_utils import Literal
@@ -133,21 +143,36 @@ def interleave_datasets(
             )
         if i == 0:
             dataset_type, other_type = (
-                (Dataset, IterableDataset) if isinstance(dataset, Dataset) else (IterableDataset, Dataset)
+                (Dataset, IterableDataset)
+                if isinstance(dataset, Dataset)
+                else (IterableDataset, Dataset)
             )
         elif not isinstance(dataset, dataset_type):
             raise ValueError(
                 f"Unable to interleave a {dataset_type.__name__} (at position 0) with a {other_type.__name__} (at position {i}). Expected a list of Dataset objects or a list of IterableDataset objects."
             )
     if stopping_strategy not in ["first_exhausted", "all_exhausted"]:
-        raise ValueError(f"{stopping_strategy} is not supported. Please enter a valid stopping_strategy.")
+        raise ValueError(
+            f"{stopping_strategy} is not supported. Please enter a valid stopping_strategy."
+        )
     if dataset_type is Dataset:
         return _interleave_map_style_datasets(
-            datasets, probabilities, seed, info=info, split=split, stopping_strategy=stopping_strategy
+            datasets,
+            probabilities,
+            seed,
+            info=info,
+            split=split,
+            stopping_strategy=stopping_strategy,
         )
     else:
         return _interleave_iterable_datasets(
-            datasets, probabilities, batch_size, seed, info=info, split=split, stopping_strategy=stopping_strategy
+            datasets,
+            probabilities,
+            batch_size,
+            seed,
+            info=info,
+            split=split,
+            stopping_strategy=stopping_strategy,
         )
 
 
@@ -187,7 +212,9 @@ def _interleave_iterable_datasets(
     """
     datasets = [d._resolve_features() for d in datasets]
     print_master("=" * 50)
-    print_master(f"Print the features of each dataset, make sure that all datasets have valid features.")
+    print_master(
+        f"Print the features of each dataset, make sure that all datasets have valid features."
+    )
     for idx, d in enumerate(datasets):
         print_master(f"\t\tDataset {idx} features: {[f for f in datasets[0].features]}")
     print_master("=" * 50)
@@ -198,7 +225,11 @@ def _interleave_iterable_datasets(
     # TODO: improve this to account for a mix of ClassLabel and Value for example
     # right now it would keep the type of the first dataset in the list
     features = Features(
-        {k: v for features in _align_features([dset.features for dset in datasets]) for k, v in features.items()}
+        {
+            k: v
+            for features in _align_features([dset.features for dset in datasets])
+            for k, v in features.items()
+        }
     )
 
     ex_iterables = [d._ex_iterable for d in datasets]
@@ -206,20 +237,31 @@ def _interleave_iterable_datasets(
     if batch_size is not None and batch_size > 0:
         # (interleaved-batches) if batch_size is specified, we sample data grouped by batch size, i.e. each batch (size=batch_size) is from the same dataset source
         if probabilities is None:
-            ex_iterable = CyclingMultiSourcesBatchesIterable(ex_iterables, batch_size=batch_size, stopping_strategy=stopping_strategy)
+            ex_iterable = CyclingMultiSourcesBatchesIterable(
+                ex_iterables, batch_size=batch_size, stopping_strategy=stopping_strategy
+            )
         else:
             generator = np.random.default_rng(seed)
             ex_iterable = RandomlyCyclingMultiSourcesBatchesIterable(
-                ex_iterables, generator=generator, probabilities=probabilities, batch_size=batch_size, stopping_strategy=stopping_strategy
+                ex_iterables,
+                generator=generator,
+                probabilities=probabilities,
+                batch_size=batch_size,
+                stopping_strategy=stopping_strategy,
             )
     else:
         #  (interleaved-instances) each example is sampled independently according to the given probabilities
         if probabilities is None:
-            ex_iterable = CyclingMultiSourcesExamplesIterable(ex_iterables, stopping_strategy=stopping_strategy)
+            ex_iterable = CyclingMultiSourcesExamplesIterable(
+                ex_iterables, stopping_strategy=stopping_strategy
+            )
         else:
             generator = np.random.default_rng(seed)
             ex_iterable = RandomlyCyclingMultiSourcesExamplesIterable(
-                ex_iterables, generator=generator, probabilities=probabilities, stopping_strategy=stopping_strategy
+                ex_iterables,
+                generator=generator,
+                probabilities=probabilities,
+                stopping_strategy=stopping_strategy,
             )
     # Set new info - we update the features
     # setting the features also ensures to fill missing columns with None
@@ -230,10 +272,17 @@ def _interleave_iterable_datasets(
     info.features = features
     # Get all the auth tokens per repository - in case the datasets come from different private repositories
     token_per_repo_id = {
-        repo_id: token for dataset in datasets for repo_id, token in dataset._token_per_repo_id.items()
+        repo_id: token
+        for dataset in datasets
+        for repo_id, token in dataset._token_per_repo_id.items()
     }
     # Return new daset
-    return IterableDataset(ex_iterable=ex_iterable, info=info, split=split, token_per_repo_id=token_per_repo_id)
+    return IterableDataset(
+        ex_iterable=ex_iterable,
+        info=info,
+        split=split,
+        token_per_repo_id=token_per_repo_id,
+    )
 
 
 class CyclingMultiSourcesBatchesIterable(_BaseExamplesIterable):
@@ -241,16 +290,20 @@ class CyclingMultiSourcesBatchesIterable(_BaseExamplesIterable):
         self,
         ex_iterables: List[_BaseExamplesIterable],
         batch_size: int,
-        stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "all_exhausted",
+        stopping_strategy: Literal[
+            "first_exhausted", "all_exhausted"
+        ] = "all_exhausted",
     ):
         super().__init__()
         self.ex_iterables = ex_iterables
-        self.batch_size =batch_size
+        self.batch_size = batch_size
         self.stopping_strategy = stopping_strategy
 
         # if undersampling ("first_exhausted"), we stop as soon as one dataset is exhausted
         # if oversampling ("all_exhausted"), we stop as soons as every dataset is exhausted, i.e as soon as every samples of every dataset has been visited at least once
-        self.bool_strategy_func = np.all if (stopping_strategy == "all_exhausted") else np.any
+        self.bool_strategy_func = (
+            np.all if (stopping_strategy == "all_exhausted") else np.any
+        )
         # TODO(QL): implement iter_arrow
 
     def _get_indices_iterator(self):
@@ -288,10 +341,19 @@ class CyclingMultiSourcesBatchesIterable(_BaseExamplesIterable):
                     # print(f"StopIteration: all datasets exhausted")
                     break
 
-    def shuffle_data_sources(self, generator: np.random.Generator) -> "CyclingMultiSourcesBatchesIterable":
+    def shuffle_data_sources(
+        self, generator: np.random.Generator
+    ) -> "CyclingMultiSourcesBatchesIterable":
         """Shuffle each underlying examples iterable."""
-        ex_iterables = [ex_iterable.shuffle_data_sources(generator) for ex_iterable in self.ex_iterables]
-        return CyclingMultiSourcesBatchesIterable(ex_iterables, batch_size=self.batch_size, stopping_strategy=self.stopping_strategy)
+        ex_iterables = [
+            ex_iterable.shuffle_data_sources(generator)
+            for ex_iterable in self.ex_iterables
+        ]
+        return CyclingMultiSourcesBatchesIterable(
+            ex_iterables,
+            batch_size=self.batch_size,
+            stopping_strategy=self.stopping_strategy,
+        )
 
     @property
     def n_shards(self) -> int:
@@ -306,7 +368,10 @@ class CyclingMultiSourcesBatchesIterable(_BaseExamplesIterable):
     ) -> "CyclingMultiSourcesBatchesIterable":
         """Either keep only the requested shard, or propagate the request to the underlying iterable."""
         return CyclingMultiSourcesBatchesIterable(
-            [iterable.shard_data_sources(num_shards, index, contiguous=contiguous) for iterable in self.ex_iterables],
+            [
+                iterable.shard_data_sources(num_shards, index, contiguous=contiguous)
+                for iterable in self.ex_iterables
+            ],
             stopping_strategy=self.stopping_strategy,
         )
 
@@ -318,9 +383,13 @@ class RandomlyCyclingMultiSourcesBatchesIterable(CyclingMultiSourcesBatchesItera
         generator: np.random.Generator,
         batch_size: int,
         probabilities: Optional[List[float]] = None,
-        stopping_strategy: Literal["first_exhausted", "all_exhausted"] = "first_exhausted",
+        stopping_strategy: Literal[
+            "first_exhausted", "all_exhausted"
+        ] = "first_exhausted",
     ):
-        super().__init__(ex_iterables, batch_size=batch_size, stopping_strategy=stopping_strategy)
+        super().__init__(
+            ex_iterables, batch_size=batch_size, stopping_strategy=stopping_strategy
+        )
         self.generator = deepcopy(generator)
         self.probabilities = probabilities
         self.batch_size = int(batch_size)
@@ -334,40 +403,62 @@ class RandomlyCyclingMultiSourcesBatchesIterable(CyclingMultiSourcesBatchesItera
         p: Optional[List[float]] = None,
     ) -> Iterator[int]:
         """Get an infinite iterator that randomly samples the index of the source to pick examples from."""
-        sample_size = 100_000 * 16  # approximately (num_step*num_device). do not use batch_size as variable for computing sample_size (it can be small)
+        sample_size = (
+            100_000 * 16
+        )  # approximately (num_step*num_device). do not use batch_size as variable for computing sample_size (it can be small)
         if p is None:
             # sample uniformly if p is not given
             while True:
                 # return [k for i in rng.integers(0, num_sources, size=sample_size) for k in [int(i)] * batch_size]
-                yield from (k for i in rng.integers(0, num_sources, size=sample_size) for k in [int(i)] * batch_size)
+                yield from (
+                    k
+                    for i in rng.integers(0, num_sources, size=sample_size)
+                    for k in [int(i)] * batch_size
+                )
         else:
             while True:
-                yield from (k for i in rng.choice(num_sources, size=sample_size, p=p) for k in [int(i)] * batch_size)
-                '''
+                yield from (
+                    k
+                    for i in rng.choice(num_sources, size=sample_size, p=p)
+                    for k in [int(i)] * batch_size
+                )
+                """
                 data_ids = [k for i in rng.choice(num_sources, size=sample_size, p=p) for k in [int(i)] * batch_size]
                 for i in range(sample_size):  # to check the purity of each batch
                     if len(set(data_ids[batch_size * i: batch_size * (i + 1)])) != 1:
                         print("not a pure batch?")
                 return data_ids
-                '''
+                """
 
     def _get_indices_iterator(self):
         rng = deepcopy(self.generator)
         # this is an infinite iterator that randomly samples the index of the source to pick examples from
-        return self._iter_random_indices(rng, len(self.ex_iterables), p=self.probabilities, batch_size=self.batch_size)
+        return self._iter_random_indices(
+            rng,
+            len(self.ex_iterables),
+            p=self.probabilities,
+            batch_size=self.batch_size,
+        )
 
     def _init_state_dict(self) -> dict:
         self._state_dict = {
             "ex_iterable_idx": 0,
-            "ex_iterables": [ex_iterable._init_state_dict() for ex_iterable in self.ex_iterables],
+            "ex_iterables": [
+                ex_iterable._init_state_dict() for ex_iterable in self.ex_iterables
+            ],
             "previous_states": [None] * len(self.ex_iterables),
             "is_exhausted": [False] * len(self.ex_iterables),
         }
         return self._state_dict
 
-    def shuffle_data_sources(self, generator: np.random.Generator) -> "RandomlyCyclingMultiSourcesBatchesIterable":
+    def shuffle_data_sources(
+        self, generator: np.random.Generator
+    ) -> "RandomlyCyclingMultiSourcesBatchesIterable":
         """Shuffle the data sources of each wrapped examples iterable."""
-        ex_iterables = [ex_iterable.shuffle_data_sources(generator) for ex_iterable in self.ex_iterables]
+        ex_iterables = [
+            ex_iterable.shuffle_data_sources(generator)
+            for ex_iterable in self.ex_iterables
+        ]
         return RandomlyCyclingMultiSourcesBatchesIterable(
             ex_iterables,
             generator=generator,
@@ -376,10 +467,15 @@ class RandomlyCyclingMultiSourcesBatchesIterable(CyclingMultiSourcesBatchesItera
             stopping_strategy=self.stopping_strategy,
         )
 
-    def shard_data_sources(self, num_shards: int, index: int, contiguous=True) -> "RandomlyCyclingMultiSourcesBatchesIterable":
+    def shard_data_sources(
+        self, num_shards: int, index: int, contiguous=True
+    ) -> "RandomlyCyclingMultiSourcesBatchesIterable":
         """Either keep only the requested shard, or propagate the request to the underlying iterable."""
         return RandomlyCyclingMultiSourcesBatchesIterable(
-            ex_iterables=[iterable.shard_data_sources(num_shards, index, contiguous=contiguous) for iterable in self.ex_iterables],
+            ex_iterables=[
+                iterable.shard_data_sources(num_shards, index, contiguous=contiguous)
+                for iterable in self.ex_iterables
+            ],
             generator=self.generator,
             batch_size=self.batch_size,
             probabilities=self.probabilities,

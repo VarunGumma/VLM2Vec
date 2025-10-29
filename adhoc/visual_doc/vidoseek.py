@@ -31,11 +31,11 @@ qrels = []
 corpus_counter = 0
 
 # Process each PDF
-for qid, doc in enumerate(dataset['examples']):
-    pdf_file_name = doc["meta_info"]['file_name']
+for qid, doc in enumerate(dataset["examples"]):
+    pdf_file_name = doc["meta_info"]["file_name"]
     pdf_path = os.path.join(pdf_dir, pdf_file_name)
 
-    if doc['meta_info']['reference_page'] == []:
+    if doc["meta_info"]["reference_page"] == []:
         continue
 
     if pdf_file_name not in processed_pdfs:
@@ -61,36 +61,35 @@ for qid, doc in enumerate(dataset['examples']):
     base_corpus_id = pdf_corpus_mapping[pdf_file_name]
     all_images[pdf_file_name] = images
 
-    queries.append({
-        "query-id": qid,
-        "query": doc["query"],
-        "corpus_range": list(range(base_corpus_id, base_corpus_id + len(images)))
-    })
+    queries.append(
+        {
+            "query-id": qid,
+            "query": doc["query"],
+            "corpus_range": list(range(base_corpus_id, base_corpus_id + len(images))),
+        }
+    )
 
     # Assign qrels for pages in the same PDF (score = 2)
     for img_id, _ in enumerate(images):
-        qrels.append({
-            'query-id': qid,
-            'corpus-id': base_corpus_id + img_id,
-            'score': 2
-        })
+        qrels.append(
+            {"query-id": qid, "corpus-id": base_corpus_id + img_id, "score": 2}
+        )
 
     # Assign qrels for reference pages (score = 3)
-    for page_number in doc['meta_info']['reference_page']:
-        qrels.append({
-            'query-id': qid,
-            'corpus-id': base_corpus_id + int(page_number),
-            'score': 3
-        })
+    for page_number in doc["meta_info"]["reference_page"]:
+        qrels.append(
+            {
+                "query-id": qid,
+                "corpus-id": base_corpus_id + int(page_number),
+                "score": 3,
+            }
+        )
 
     # Store encoded images in corpus if not already added
     for img_id, image in enumerate(images):
         corpus_id = base_corpus_id + img_id
         if corpus_id not in existing_corpus_ids:
-            corpus.append({
-                "corpus-id": corpus_id,
-                "image": encode_image(image)
-            })
+            corpus.append({"corpus-id": corpus_id, "image": encode_image(image)})
             existing_corpus_ids.add(corpus_id)
 
 
@@ -101,9 +100,10 @@ def save_jsonl(filename, data):
             json.dump(entry, f)
             f.write("\n")
 
-print('size of qrels', len(qrels))
-print('size of queries', len(queries))
-print('size of corpus', len(corpus))
+
+print("size of qrels", len(qrels))
+print("size of queries", len(queries))
+print("size of corpus", len(corpus))
 
 save_dir = "/fsx/sfr/data/MMEB/Visual_Doc/ViDoSeek/test/"
 os.makedirs(save_dir, exist_ok=True)

@@ -8,12 +8,13 @@ from transformers import HfArgumentParser, AutoProcessor
 from src.dataset import EvalDataset
 import re
 
+
 def main():
     for arg in sys.argv:
         if arg.startswith("--local-rank="):
             rank = arg.split("=")[1]
             sys.argv.remove(arg)
-            sys.argv.append('--local_rank')
+            sys.argv.append("--local_rank")
             sys.argv.append(rank)
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
@@ -52,13 +53,13 @@ def main():
         tgtstr_lens = []
         for tgt in eval_tgt_dataset:
             # print(tgt)
-            tokens = re.split('[^a-zA-Z]', tgt[0])
+            tokens = re.split("[^a-zA-Z]", tgt[0])
             tgttokens.append(tokens)
             tgtstr_lens.append(len(tokens))
             pass
 
-        print(f'dataset: {subset}')
-        print(f'tgt-avg-len: {np.mean(tgtstr_lens)}')
+        print(f"dataset: {subset}")
+        print(f"tgt-avg-len: {np.mean(tgtstr_lens)}")
         pass
 
 

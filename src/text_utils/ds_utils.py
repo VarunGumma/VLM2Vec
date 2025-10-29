@@ -19,20 +19,22 @@ from collections import OrderedDict
 # DeepSpeed data structures it has to be available in the current python environment.
 import deepspeed
 from deepspeed.utils import logger
-from deepspeed.checkpoint.constants import (DS_VERSION,
-                                            OPTIMIZER_STATE_DICT,
-                                            PARAM_SHAPES,
-                                            SINGLE_PARTITION_OF_FP32_GROUPS,
-                                            FP32_FLAT_GROUPS,
-                                            ZERO_STAGE,
-                                            PARTITION_COUNT,
-                                            PARAM_SHAPES,
-                                            BUFFER_NAMES)
+from deepspeed.checkpoint.constants import (
+    DS_VERSION,
+    OPTIMIZER_STATE_DICT,
+    PARAM_SHAPES,
+    SINGLE_PARTITION_OF_FP32_GROUPS,
+    FP32_FLAT_GROUPS,
+    ZERO_STAGE,
+    PARTITION_COUNT,
+    PARAM_SHAPES,
+    BUFFER_NAMES,
+)
 
 debug = 0
 
 # load to cpu
-device = torch.device('cpu')
+device = torch.device("cpu")
 
 
 def atoi(text):
@@ -40,12 +42,12 @@ def atoi(text):
 
 
 def natural_keys(text):
-    '''
+    """
     alist.sort(key=natural_keys) sorts in human order
     http://nedbatchelder.com/blog/200712/human_sorting.html
     (See Toothy's implementation in the comments)
-    '''
-    return [atoi(c) for c in re.split(r'(\d+)', text)]
+    """
+    return [atoi(c) for c in re.split(r"(\d+)", text)]
 
 
 def get_model_state_file(checkpoint_dir, zero_stage):
@@ -66,13 +68,14 @@ def get_model_state_file(checkpoint_dir, zero_stage):
 
 def get_optim_files(checkpoint_dir):
     # XXX: need to test that this simple glob rule works for multi-node setup too
-    optim_files = sorted(glob.glob(os.path.join(checkpoint_dir,
-                                                "*_optim_states.pt")),
-                         key=natural_keys)
+    optim_files = sorted(
+        glob.glob(os.path.join(checkpoint_dir, "*_optim_states.pt")), key=natural_keys
+    )
 
     if len(optim_files) == 0:
         raise FileNotFoundError(
-            f"can't find '*_optim_states.pt' files in directory '{checkpoint_dir}'")
+            f"can't find '*_optim_states.pt' files in directory '{checkpoint_dir}'"
+        )
 
     return optim_files
 
@@ -88,9 +91,7 @@ def parse_model_state(file):
 
     # recover just the buffers while restoring them to fp32 if they were saved in fp16
     buffers = {
-        k: v.float()
-        for k,
-        v in state_dict["module"].items() if k in buffer_names
+        k: v.float() for k, v in state_dict["module"].items() if k in buffer_names
     }
     param_shapes = state_dict[PARAM_SHAPES]
 
@@ -145,8 +146,8 @@ def parse_optim_states(files, ds_checkpoint_dir):
         # will require matching the sub-lists of param_shapes for each param group flattened tensor
 
         fp32_flat_groups = [
-            torch.cat(state_dicts[i][OPTIMIZER_STATE_DICT][fp32_groups_key],
-                      0) for i in range(len(state_dicts))
+            torch.cat(state_dicts[i][OPTIMIZER_STATE_DICT][fp32_groups_key], 0)
+            for i in range(len(state_dicts))
         ]
 
     return zero_stage, world_size, fp32_flat_groups
@@ -161,30 +162,30 @@ def _get_fp32_state_dict_from_zero_checkpoint(ds_checkpoint_dir):
     print(f"Processing zero checkpoint '{ds_checkpoint_dir}'")
 
     optim_files = get_optim_files(ds_checkpoint_dir)
-    zero_stage, world_size, fp32_flat_groups = parse_optim_states(optim_files, ds_checkpoint_dir)
+    zero_stage, world_size, fp32_flat_groups = parse_optim_states(
+        optim_files, ds_checkpoint_dir
+    )
     print(
-        f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}")
+        f"Detected checkpoint of type zero stage {zero_stage}, world_size: {world_size}"
+    )
 
     model_file = get_model_state_file(ds_checkpoint_dir, zero_stage)
     buffers, param_shapes, ds_version = parse_model_state(model_file)
-    print(f'Parsing checkpoint created by deepspeed=={ds_version}')
+    print(f"Parsing checkpoint created by deepspeed=={ds_version}")
 
     if zero_stage == 2:
-        return _get_fp32_state_dict_from_zero2_checkpoint(world_size,
-                                                          param_shapes,
-                                                          fp32_flat_groups,
-                                                          buffers)
+        return _get_fp32_state_dict_from_zero2_checkpoint(
+            world_size, param_shapes, fp32_flat_groups, buffers
+        )
     elif zero_stage == 3:
-        return _get_fp32_state_dict_from_zero3_checkpoint(world_size,
-                                                          param_shapes,
-                                                          fp32_flat_groups,
-                                                          buffers)
+        return _get_fp32_state_dict_from_zero3_checkpoint(
+            world_size, param_shapes, fp32_flat_groups, buffers
+        )
 
 
-def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
-                                               param_shapes,
-                                               fp32_flat_groups,
-                                               buffers):
+def _get_fp32_state_dict_from_zero2_checkpoint(
+    world_size, param_shapes, fp32_flat_groups, buffers
+):
 
     # Reconstruction protocol:
     #
@@ -194,7 +195,8 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
         for i in range(world_size):
             for j in range(len(fp32_flat_groups[0])):
                 print(
-                    f"{FP32_FLAT_GROUPS}[{i}][{j}].shape={fp32_flat_groups[i][j].shape}")
+                    f"{FP32_FLAT_GROUPS}[{i}][{j}].shape={fp32_flat_groups[i][j].shape}"
+                )
 
     # XXX: memory usage doubles here (zero2)
     num_param_groups = len(fp32_flat_groups[0])
@@ -203,15 +205,18 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
         merged_partitions = [sd[i] for sd in fp32_flat_groups]
         full_single_fp32_vector = torch.cat(merged_partitions, 0)
         merged_single_partition_of_fp32_groups.append(full_single_fp32_vector)
-    avail_numel = sum([
-        full_single_fp32_vector.numel()
-        for full_single_fp32_vector in merged_single_partition_of_fp32_groups
-    ])
+    avail_numel = sum(
+        [
+            full_single_fp32_vector.numel()
+            for full_single_fp32_vector in merged_single_partition_of_fp32_groups
+        ]
+    )
 
     if debug:
         wanted_params = sum([len(shapes) for shapes in param_shapes])
         wanted_numel = sum(
-            [sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes])
+            [sum(shape.numel() for shape in shapes.values()) for shapes in param_shapes]
+        )
         # not asserting if there is a mismatch due to possible padding
         print(f"Have {avail_numel} numels to process.")
         print(f"Need {wanted_numel} numels in {wanted_params} params.")
@@ -228,7 +233,9 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
     # out-of-core computing solution
     total_numel = 0
     total_params = 0
-    for shapes, full_single_fp32_vector in zip(param_shapes, merged_single_partition_of_fp32_groups):
+    for shapes, full_single_fp32_vector in zip(
+        param_shapes, merged_single_partition_of_fp32_groups
+    ):
         offset = 0
         avail_numel = full_single_fp32_vector.numel()
         for name, shape in shapes.items():
@@ -242,9 +249,8 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
                     f"{name} full shape: {shape} unpartitioned numel {unpartitioned_numel} "
                 )
             state_dict[name] = full_single_fp32_vector.narrow(
-                0,
-                offset,
-                unpartitioned_numel).view(shape)
+                0, offset, unpartitioned_numel
+            ).view(shape)
             offset += unpartitioned_numel
 
         # Z2 started to align to 2*world_size to improve nccl performance. Therefore both offset and
@@ -268,7 +274,8 @@ def _get_fp32_state_dict_from_zero2_checkpoint(world_size,
         # Sanity check
         if offset != avail_numel:
             raise ValueError(
-                f"consumed {offset} numels out of {avail_numel} - something is wrong")
+                f"consumed {offset} numels out of {avail_numel} - something is wrong"
+            )
 
     print(
         f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements"
@@ -284,10 +291,9 @@ def zero3_partitioned_param_info(unpartitioned_numel, world_size):
     return partitioned_numel, padding_numel
 
 
-def _get_fp32_state_dict_from_zero3_checkpoint(world_size,
-                                               param_shapes,
-                                               fp32_flat_groups,
-                                               buffers):
+def _get_fp32_state_dict_from_zero3_checkpoint(
+    world_size, param_shapes, fp32_flat_groups, buffers
+):
 
     # Reconstruction protocol: For zero3 we need to zip the partitions together at boundary of each
     # param, re-consolidating each param, while dealing with padding if any
@@ -325,7 +331,9 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size,
         total_numel += unpartitioned_numel
         total_params += 1
 
-        partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(unpartitioned_numel, world_size)
+        partitioned_numel, partitioned_padding_numel = zero3_partitioned_param_info(
+            unpartitioned_numel, world_size
+        )
 
         if debug:
             print(
@@ -333,14 +341,17 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size,
             )
 
         # XXX: memory usage doubles here
-        state_dict[name] = torch.cat(
-            tuple(fp32_flat_groups[i].narrow(0,
-                                             offset,
-                                             partitioned_numel)
-                  for i in range(world_size)),
-            0).narrow(0,
-                      0,
-                      unpartitioned_numel).view(shape)
+        state_dict[name] = (
+            torch.cat(
+                tuple(
+                    fp32_flat_groups[i].narrow(0, offset, partitioned_numel)
+                    for i in range(world_size)
+                ),
+                0,
+            )
+            .narrow(0, 0, unpartitioned_numel)
+            .view(shape)
+        )
         offset += partitioned_numel
 
     offset *= world_size
@@ -348,7 +359,8 @@ def _get_fp32_state_dict_from_zero3_checkpoint(world_size,
     # Sanity check
     if offset != avail_numel:
         raise ValueError(
-            f"consumed {offset} numels out of {avail_numel} - something is wrong")
+            f"consumed {offset} numels out of {avail_numel} - something is wrong"
+        )
 
     print(
         f"Reconstructed fp32 state dict with {total_params} params {total_numel} elements"
@@ -383,9 +395,9 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
     If you want it all done for you, use ``load_state_dict_from_zero_checkpoint`` instead.
     """
     if tag is None:
-        latest_path = os.path.join(checkpoint_dir, 'latest')
+        latest_path = os.path.join(checkpoint_dir, "latest")
         if os.path.isfile(latest_path):
-            with open(latest_path, 'r') as fd:
+            with open(latest_path, "r") as fd:
                 tag = fd.read().strip()
         else:
             raise ValueError(f"Unable to find 'latest' file at {latest_path}")
@@ -399,21 +411,23 @@ def get_fp32_state_dict_from_zero_checkpoint(checkpoint_dir, tag=None):
 
 
 def rename_checkpoint_keys(checkpoint_dir):
-    '''
+    """
     remove prefix (`encoder.`) in keys to make DeepSpeed saved checkpoints compatible
-    '''
+    """
     ckpt_path = os.path.join(checkpoint_dir, "pytorch_model.bin")
     state_dict = torch.load(ckpt_path)
     _state_dict = {}
-    for k,v in state_dict.items():
-        if k.startswith('encoder.'):
-            new_k = k[8: ]
+    for k, v in state_dict.items():
+        if k.startswith("encoder."):
+            new_k = k[8:]
             _state_dict[new_k] = v
-        elif k.startswith('q_encoder.encoder.'):
-            new_k = k[18: ]
+        elif k.startswith("q_encoder.encoder."):
+            new_k = k[18:]
             _state_dict[new_k] = v
     assert len(_state_dict) == len(state_dict)
-    assert sum(p.numel() for k,p in _state_dict.items()) == sum(p.numel() for k,p in state_dict.items())
+    assert sum(p.numel() for k, p in _state_dict.items()) == sum(
+        p.numel() for k, p in state_dict.items()
+    )
     torch.save(_state_dict, ckpt_path)
 
 
@@ -470,14 +484,14 @@ if __name__ == "__main__":
     parser.add_argument(
         "checkpoint_dir",
         type=str,
-        help="path to the desired checkpoint folder, e.g., path/checkpoint-12")
+        help="path to the desired checkpoint folder, e.g., path/checkpoint-12",
+    )
     parser.add_argument(
         "output_file",
         type=str,
-        help=
-        "path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)"
+        help="path to the pytorch fp32 state_dict output file (e.g. path/checkpoint-12/pytorch_model.bin)",
     )
-    parser.add_argument("-d", "--debug", action='store_true', help="enable debug")
+    parser.add_argument("-d", "--debug", action="store_true", help="enable debug")
     args = parser.parse_args()
 
     debug = args.debug

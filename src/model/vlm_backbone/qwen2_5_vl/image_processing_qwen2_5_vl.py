@@ -30,7 +30,11 @@ import numpy as np
 
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_processing_utils import BaseImageProcessor
-from transformers.image_transforms import convert_to_rgb, resize, to_channel_dimension_format
+from transformers.image_transforms import (
+    convert_to_rgb,
+    resize,
+    to_channel_dimension_format,
+)
 from transformers.image_utils import (
     OPENAI_CLIP_MEAN,
     OPENAI_CLIP_STD,
@@ -46,6 +50,7 @@ from transformers.image_utils import (
     valid_images,
     validate_preprocess_arguments,
 )
+
 try:
     # transformers>=4.52
     from transformers.video_utils import VideoInput
@@ -73,7 +78,11 @@ def make_batched_images(images) -> List[List[ImageInput]]:
     Returns:
         list: A list of images.
     """
-    if isinstance(images, (list, tuple)) and isinstance(images[0], (list, tuple)) and is_valid_image(images[0][0]):
+    if (
+        isinstance(images, (list, tuple))
+        and isinstance(images[0], (list, tuple))
+        and is_valid_image(images[0][0])
+    ):
         return [img for img_list in images for img in img_list]
 
     elif isinstance(images, (list, tuple)) and is_valid_image(images[0]):
@@ -86,7 +95,11 @@ def make_batched_images(images) -> List[List[ImageInput]]:
 
 
 def make_batched_videos(videos) -> List[VideoInput]:
-    if isinstance(videos, (list, tuple)) and isinstance(videos[0], (list, tuple)) and is_valid_image(videos[0][0]):
+    if (
+        isinstance(videos, (list, tuple))
+        and isinstance(videos[0], (list, tuple))
+        and is_valid_image(videos[0][0])
+    ):
         return videos
 
     elif isinstance(videos, (list, tuple)) and is_valid_image(videos[0]):
@@ -102,7 +115,11 @@ def make_batched_videos(videos) -> List[VideoInput]:
 
 
 def smart_resize(
-    height: int, width: int, factor: int = 28, min_pixels: int = 56 * 56, max_pixels: int = 14 * 14 * 4 * 1280
+    height: int,
+    width: int,
+    factor: int = 28,
+    min_pixels: int = 56 * 56,
+    max_pixels: int = 14 * 14 * 4 * 1280,
 ):
     """Rescales the image so that the following conditions are met:
 
@@ -119,7 +136,11 @@ def smart_resize(
     #     raise ValueError(
     #         f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
     #     )
-    if height < factor or width < factor or max(height, width) / min(height, width) > 200:
+    if (
+        height < factor
+        or width < factor
+        or max(height, width) / min(height, width) > 200
+    ):
         # extreme cases, resize to a square
         height = width = max(factor, height, width)
     h_bar = round(height / factor) * factor
@@ -209,7 +230,6 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         self.size = {"min_pixels": min_pixels, "max_pixels": max_pixels}
         self.do_convert_rgb = do_convert_rgb
 
-
     @classmethod
     def from_dict(cls, image_processor_dict, **kwargs):
         """
@@ -225,10 +245,10 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
             if "size" in image_processor_dict:
                 image_processor_dict["size"] = kwargs.pop("size")
             else:
-                if 'max_pixels' in image_processor_dict:
-                    image_processor_dict['max_pixels'] = kwargs["size"]["max_pixels"]
-                if 'min_pixels' in image_processor_dict:
-                    image_processor_dict['min_pixels'] = kwargs["size"]["min_pixels"]
+                if "max_pixels" in image_processor_dict:
+                    image_processor_dict["max_pixels"] = kwargs["size"]["max_pixels"]
+                if "min_pixels" in image_processor_dict:
+                    image_processor_dict["min_pixels"] = kwargs["size"]["min_pixels"]
         if "crop_size" in kwargs and "crop_size" in image_processor_dict:
             image_processor_dict["crop_size"] = kwargs.pop("crop_size")
 
@@ -328,29 +348,44 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
                     max_pixels=self.max_pixels,
                 )
                 image = resize(
-                    image, size=(resized_height, resized_width), resample=resample, input_data_format=input_data_format
+                    image,
+                    size=(resized_height, resized_width),
+                    resample=resample,
+                    input_data_format=input_data_format,
                 )
 
             if do_rescale:
-                image = self.rescale(image, scale=rescale_factor, input_data_format=input_data_format)
+                image = self.rescale(
+                    image, scale=rescale_factor, input_data_format=input_data_format
+                )
 
             if do_normalize:
                 image = self.normalize(
-                    image=image, mean=image_mean, std=image_std, input_data_format=input_data_format
+                    image=image,
+                    mean=image_mean,
+                    std=image_std,
+                    input_data_format=input_data_format,
                 )
 
-            image = to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format)
+            image = to_channel_dimension_format(
+                image, data_format, input_channel_dim=input_data_format
+            )
             processed_images.append(image)
 
         patches = np.array(processed_images)
         if data_format == ChannelDimension.LAST:
             patches = patches.transpose(0, 3, 1, 2)
         if patches.shape[0] % self.temporal_patch_size != 0:
-            repeats = np.repeat(patches[-1][np.newaxis], self.temporal_patch_size - 1, axis=0)
+            repeats = np.repeat(
+                patches[-1][np.newaxis], self.temporal_patch_size - 1, axis=0
+            )
             patches = np.concatenate([patches, repeats], axis=0)
         channel = patches.shape[1]
         grid_t = patches.shape[0] // self.temporal_patch_size
-        grid_h, grid_w = resized_height // self.patch_size, resized_width // self.patch_size
+        grid_h, grid_w = (
+            resized_height // self.patch_size,
+            resized_width // self.patch_size,
+        )
         patches = patches.reshape(
             grid_t,
             self.temporal_patch_size,
@@ -364,7 +399,8 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         )
         patches = patches.transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
         flatten_patches = patches.reshape(
-            grid_t * grid_h * grid_w, channel * self.temporal_patch_size * self.patch_size * self.patch_size
+            grid_t * grid_h * grid_w,
+            channel * self.temporal_patch_size * self.patch_size * self.patch_size,
         )
 
         return flatten_patches, (grid_t, grid_h, grid_w)
@@ -439,11 +475,15 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
         size = size if size is not None else self.size
         resample = resample if resample is not None else self.resample
         do_rescale = do_rescale if do_rescale is not None else self.do_rescale
-        rescale_factor = rescale_factor if rescale_factor is not None else self.rescale_factor
+        rescale_factor = (
+            rescale_factor if rescale_factor is not None else self.rescale_factor
+        )
         do_normalize = do_normalize if do_normalize is not None else self.do_normalize
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
-        do_convert_rgb = do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        do_convert_rgb = (
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        )
 
         if images is not None:
             images = make_batched_images(images)
@@ -508,7 +548,10 @@ class Qwen2_5_VLImageProcessor(BaseImageProcessor):
                 vision_grid_thws.append(video_grid_thw)
             pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
-            data = {"pixel_values_videos": pixel_values, "video_grid_thw": vision_grid_thws}
+            data = {
+                "pixel_values_videos": pixel_values,
+                "video_grid_thw": vision_grid_thws,
+            }
 
         return BatchFeature(data=data, tensor_type=return_tensors)
 

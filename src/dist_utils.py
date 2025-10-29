@@ -8,11 +8,13 @@
 import torch
 import torch.distributed as dist
 
+
 class GatherLayer(torch.autograd.Function):
     """
     Gather tensors from all process, supporting backward propagation.
     https://github.com/Spijkervet/SimCLR/blob/master/simclr/modules/gather.py
     """
+
     @staticmethod
     def forward(ctx, input):
         ctx.save_for_backward(input)
@@ -29,7 +31,8 @@ class GatherLayer(torch.autograd.Function):
 
 
 def dist_gather(x: torch.tensor):
-    if not dist.is_initialized():  return x
+    if not dist.is_initialized():
+        return x
     if len(x.shape) == 0:
         x = x.reshape(1)
     x_gather = GatherLayer.apply(x)
@@ -39,7 +42,8 @@ def dist_gather(x: torch.tensor):
 
 @torch.no_grad()
 def dist_gather_nograd(x: torch.tensor):
-    if not dist.is_initialized():  return x
+    if not dist.is_initialized():
+        return x
     x_gather = [torch.ones_like(x) for _ in range(get_world_size())]
     dist.all_gather(x_gather, x, async_op=False)
     x_gather = torch.cat(x_gather, dim=0)
@@ -63,6 +67,7 @@ def get_world_size():
         return 1
     else:
         return dist.get_world_size()
+
 
 def barrier():
     if dist.is_initialized():

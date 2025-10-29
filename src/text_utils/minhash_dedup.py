@@ -125,10 +125,17 @@ def embed_func(
         The hash values in each range and the index.
     """
     hashvalues = np.ones(num_perm, dtype=np.uint64) * MAX_HASH
-    tokens = {" ".join(t) for t in ngrams(NON_ALPHA.split(content), ngram_size, min_ngram_size)}
-    hv = np.array([sha1_hash32(token.encode("utf-8")) for token in tokens], dtype=np.uint64)  # noqa: E501
+    tokens = {
+        " ".join(t)
+        for t in ngrams(NON_ALPHA.split(content), ngram_size, min_ngram_size)
+    }
+    hv = np.array(
+        [sha1_hash32(token.encode("utf-8")) for token in tokens], dtype=np.uint64
+    )  # noqa: E501
     a, b = permutations
-    phv = np.bitwise_and(((hv * np.tile(a, (len(hv), 1)).T).T + b) % MERSENNE_PRIME, MAX_HASH)  # noqa: E501
+    phv = np.bitwise_and(
+        ((hv * np.tile(a, (len(hv), 1)).T).T + b) % MERSENNE_PRIME, MAX_HASH
+    )  # noqa: E501
     hashvalues = np.vstack([phv, hashvalues]).min(axis=0)
     Hs = [bytes(hashvalues[start:end].byteswap().data) for start, end in hashranges]
     return {"__signatures__": Hs, "__id__": idx}
@@ -214,7 +221,9 @@ class UnionFind:
 if __name__ == "__main__":
 
     def run(
-        dataset: str = typer.Option("codeparrot/codeparrot-clean-valid", help="The dataset to use"),  # noqa: E501
+        dataset: str = typer.Option(
+            "codeparrot/codeparrot-clean-valid", help="The dataset to use"
+        ),  # noqa: E501
         config: str = typer.Option("default", help="Dataset config"),
         split: str = typer.Option("train", help="Dataset split"),
         data_dir: str = typer.Option(None, help="Dataset data directory"),
@@ -286,7 +295,9 @@ if __name__ == "__main__":
         time_measures["clustering"] = time.time()
         batch_size: int = 10000
         for i in tqdm(
-            range(0, len(embedded), batch_size), dynamic_ncols=True, desc="Iterating MinHashes..."  # noqa: E501
+            range(0, len(embedded), batch_size),
+            dynamic_ncols=True,
+            desc="Iterating MinHashes...",  # noqa: E501
         ):
             batch = embedded[i : i + batch_size]
             for key, Hs in zip(batch["__id__"], batch["__signatures__"]):
@@ -339,7 +350,9 @@ if __name__ == "__main__":
         logger.info(
             f"{'Data Number (after)':<{PAD}}: {FINAL_DATA_SIZE} ({FINAL_DATA_SIZE / DATA_SIZE:.2%})"  # noqa: E501
         )
-        logger.info(f"{'Duplicate Number':<{PAD}}: {DUP_SIZE} ({DUP_SIZE / DATA_SIZE:.2%})")  # noqa: E501
+        logger.info(
+            f"{'Duplicate Number':<{PAD}}: {DUP_SIZE} ({DUP_SIZE / DATA_SIZE:.2%})"
+        )  # noqa: E501
         logger.info(f"{'Total Time':<{PAD}}: {time.time() - start_time:.2f} seconds")
         logger.info(f"{'Deduplicated Dataset':<{PAD}}: {output}")
         logger.info("🤗 Happy Deduplicating 🤗")

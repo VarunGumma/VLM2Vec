@@ -9,7 +9,7 @@ base_output_dir = "/mnt/disks/embedding/data/vlm2vec/MMEB-train/visdoc/visrag"
 # Dataset name to subfolder mapping
 datasets_to_process = {
     # 'openbmb/VisRAG-Ret-Train-Synthetic-data': 'Synthetic_data',
-    'openbmb/VisRAG-Ret-Train-In-domain-data': 'Train_in_domain_data',
+    "openbmb/VisRAG-Ret-Train-In-domain-data": "Train_in_domain_data",
 }
 
 # Process each dataset
@@ -24,7 +24,7 @@ for data_name, folder_name in datasets_to_process.items():
     # Group by source
     source_splits = defaultdict(list)
     for example in tqdm(dataset, desc="Categorizing"):
-        source_splits[example['source']].append(example)
+        source_splits[example["source"]].append(example)
 
     # Save each split as a Parquet file
     for source, examples in source_splits.items():

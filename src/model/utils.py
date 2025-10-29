@@ -7,15 +7,18 @@ import numpy as np
 class UnionFind:
     def __init__(self, size):
         self.parent = np.arange(size)
+
     def find(self, x):
         if self.parent[x] != x:
             self.parent[x] = self.find(self.parent[x])  # Path compression
         return self.parent[x]
+
     def union(self, x, y):
         px = self.find(x)
         py = self.find(y)
         if px != py:
             self.parent[py] = px
+
 
 def get_select_mask(tensor, skip_ratio=0, rand=False):
     # Use tensor operations for efficiency
@@ -28,7 +31,7 @@ def get_select_mask(tensor, skip_ratio=0, rand=False):
                 continue
             positions = (tensor == val).nonzero(as_tuple=True)[0]
             num_positions = len(positions)
-            
+
             if num_positions == 1:
                 retain_mask[positions] = True
             else:
@@ -39,9 +42,11 @@ def get_select_mask(tensor, skip_ratio=0, rand=False):
                     perm = torch.randperm(num_positions, device=tensor.device)
                     positions_to_retain = positions[perm[:num_to_retain]]
                 else:
-                    indices = torch.linspace(0, num_positions - 1, steps=num_to_retain).long()
+                    indices = torch.linspace(
+                        0, num_positions - 1, steps=num_to_retain
+                    ).long()
                     positions_to_retain = positions[indices]
-                    
+
                 retain_mask[positions_to_retain] = True
     else:
         assert type(tensor) == np.ndarray
@@ -53,7 +58,7 @@ def get_select_mask(tensor, skip_ratio=0, rand=False):
                 continue
             positions = np.nonzero(tensor == val)[0]
             num_positions = len(positions)
-            
+
             if num_positions == 1:
                 retain_mask[positions] = True
             else:
@@ -63,19 +68,22 @@ def get_select_mask(tensor, skip_ratio=0, rand=False):
                     perm = np.random.permutation(num_positions)
                     positions_to_retain = positions[perm[:num_to_retain]]
                 else:
-                    indices = np.linspace(0, num_positions - 1, num=num_to_retain, dtype=int)
+                    indices = np.linspace(
+                        0, num_positions - 1, num=num_to_retain, dtype=int
+                    )
                     positions_to_retain = positions[indices]
-                    
+
                 retain_mask[positions_to_retain] = True
     return retain_mask
+
 
 def parse_layer_type(str_ranges, L, default=0):
     # 0 is without layer token selection, 1 is with layer token selection
     result = [default] * L
-    matches = re.findall(r'\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]', str_ranges)
+    matches = re.findall(r"\[\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\]", str_ranges)
     for start, end, value in matches:
         start, end, value = int(start) - 1, int(end) - 1, int(value)
         if end >= L:
             end = L - 1
-        result[start:end + 1] = [value] * (end - start + 1)
+        result[start : end + 1] = [value] * (end - start + 1)
     return result

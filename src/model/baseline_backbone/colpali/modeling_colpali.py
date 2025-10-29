@@ -21,13 +21,18 @@ class ColPali(PaliGemmaPreTrainedModel):
 
         model = PaliGemmaForConditionalGeneration(config=config)
         if model.language_model._tied_weights_keys is not None:
-            self._tied_weights_keys = [f"model.language_model.{k}" for k in model.language_model._tied_weights_keys]
+            self._tied_weights_keys = [
+                f"model.language_model.{k}"
+                for k in model.language_model._tied_weights_keys
+            ]
         self.model = model
 
         # TODO: Wait for ColPali2 to create a ColPaliConfig to allow specifying the embedding dimension.
         # We could do it now but it would break all the models trying to load the model from the checkpoint.
         self.dim = 128
-        self.custom_text_proj = nn.Linear(self.model.config.text_config.hidden_size, self.dim)
+        self.custom_text_proj = nn.Linear(
+            self.model.config.text_config.hidden_size, self.dim
+        )
 
         self.post_init()
 
@@ -37,14 +42,24 @@ class ColPali(PaliGemmaPreTrainedModel):
         if "pixel_values" in kwargs:
             kwargs["pixel_values"] = kwargs["pixel_values"].to(dtype=self.dtype)
 
-        outputs = self.model(*args, output_hidden_states=True, **kwargs)  # (batch_size, sequence_length, hidden_size)
-        last_hidden_states = outputs.hidden_states[-1]  # (batch_size, sequence_length, hidden_size)
-        proj = self.custom_text_proj(last_hidden_states)  # (batch_size, sequence_length, dim)
+        outputs = self.model(
+            *args, output_hidden_states=True, **kwargs
+        )  # (batch_size, sequence_length, hidden_size)
+        last_hidden_states = outputs.hidden_states[
+            -1
+        ]  # (batch_size, sequence_length, hidden_size)
+        proj = self.custom_text_proj(
+            last_hidden_states
+        )  # (batch_size, sequence_length, dim)
 
         # L2 normalization
-        proj = proj / proj.norm(dim=-1, keepdim=True)  # (batch_size, sequence_length, dim)
+        proj = proj / proj.norm(
+            dim=-1, keepdim=True
+        )  # (batch_size, sequence_length, dim)
 
-        proj = proj * kwargs["attention_mask"].unsqueeze(-1)  # (batch_size, sequence_length, dim)
+        proj = proj * kwargs["attention_mask"].unsqueeze(
+            -1
+        )  # (batch_size, sequence_length, dim)
 
         return proj
 
@@ -74,7 +89,9 @@ class ColPali(PaliGemmaPreTrainedModel):
         new_num_tokens: Optional[int] = None,
         pad_to_multiple_of=None,
     ) -> nn.Embedding:
-        model_embeds = self.model.language_model.resize_token_embeddings(new_num_tokens, pad_to_multiple_of)
+        model_embeds = self.model.language_model.resize_token_embeddings(
+            new_num_tokens, pad_to_multiple_of
+        )
 
         # Update vocab size
         self.config.text_config.vocab_size = model_embeds.num_embeddings

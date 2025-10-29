@@ -25,7 +25,11 @@ import transformers
 from transformers.feature_extraction_utils import BatchFeature
 from transformers.image_utils import ImageInput
 from transformers.processing_utils import ProcessorMixin
-from transformers.tokenization_utils_base import PaddingStrategy, TextInput, TruncationStrategy
+from transformers.tokenization_utils_base import (
+    PaddingStrategy,
+    TextInput,
+    TruncationStrategy,
+)
 from transformers.utils import TensorType
 from .image_processing_phi3_v import Phi3VImageProcessor
 
@@ -59,13 +63,13 @@ class Phi3VProcessor(ProcessorMixin):
         self.chat_template = None
 
     def __call__(
-            self,
-            text: Union[TextInput, List[TextInput]],
-            images: ImageInput = None,
-            padding: Union[bool, str, PaddingStrategy] = False,
-            truncation: Union[bool, str, TruncationStrategy] = None,
-            max_length=None,
-            return_tensors: Optional[Union[str, TensorType]] = TensorType.PYTORCH,
+        self,
+        text: Union[TextInput, List[TextInput]],
+        images: ImageInput = None,
+        padding: Union[bool, str, PaddingStrategy] = False,
+        truncation: Union[bool, str, TruncationStrategy] = None,
+        max_length=None,
+        return_tensors: Optional[Union[str, TensorType]] = TensorType.PYTORCH,
     ) -> BatchFeature:
         """
         Main method to prepare for the model one or several sequences(s) and image(s). This method forwards the `text`
@@ -116,12 +120,18 @@ class Phi3VProcessor(ProcessorMixin):
             image_inputs = self.image_processor(images, return_tensors=return_tensors)
         else:
             image_inputs = {}
-        inputs = self._convert_images_texts_to_inputs(image_inputs, text, padding=padding, truncation=truncation,
-                                                      max_length=max_length, return_tensors=return_tensors)
+        inputs = self._convert_images_texts_to_inputs(
+            image_inputs,
+            text,
+            padding=padding,
+            truncation=truncation,
+            max_length=max_length,
+            return_tensors=return_tensors,
+        )
         return inputs
 
     def calc_num_image_tokens(self, images: ImageInput):
-        """ Calculate the number of image tokens for each image.
+        """Calculate the number of image tokens for each image.
         Args:
             images (`ImageInput`):
                 Image to preprocess. Expects a single or batch of images with pixel values ranging from 0 to 255. If
@@ -130,7 +140,7 @@ class Phi3VProcessor(ProcessorMixin):
         return self.image_processor.calc_num_image_tokens(images)
 
     def calc_num_image_tokens_from_image_size(self, width, height):
-        """ Calculate the number of image token for an image with given width and height.
+        """Calculate the number of image token for an image with given width and height.
         Args:
             width (`int`):
                 Width of the image.
@@ -146,25 +156,43 @@ class Phi3VProcessor(ProcessorMixin):
     def get_special_image_token_id(self):
         return self.tokenizer.convert_tokens_to_ids(self.special_image_token)
 
-    def _convert_images_texts_to_inputs(self, images, texts, padding=False, truncation=None, max_length=None,
-                                        return_tensors=None):
+    def _convert_images_texts_to_inputs(
+        self,
+        images,
+        texts,
+        padding=False,
+        truncation=None,
+        max_length=None,
+        return_tensors=None,
+    ):
 
         if not len(images):
-            model_inputs = self.tokenizer(texts, return_tensors=return_tensors, padding=padding, truncation=truncation,
-                                          max_length=max_length)
+            model_inputs = self.tokenizer(
+                texts,
+                return_tensors=return_tensors,
+                padding=padding,
+                truncation=truncation,
+                max_length=max_length,
+            )
             return BatchFeature(data={**model_inputs})
 
         pattern = r"<\|image_\d+\|>"
-        prompt_chunks = [self.tokenizer(chunk).input_ids for chunk in re.split(pattern, texts)]
+        prompt_chunks = [
+            self.tokenizer(chunk).input_ids for chunk in re.split(pattern, texts)
+        ]
 
-        if 'num_img_tokens' in images:
-            num_img_tokens = images['num_img_tokens']
+        if "num_img_tokens" in images:
+            num_img_tokens = images["num_img_tokens"]
         else:
-            assert 'num_crops' in images, 'num_crops must be provided in images if num_img_tokens is not provided'
-            num_crops = images['num_crops']
-            num_img_tokens = [_num_crops * self.num_img_tokens for _num_crops in num_crops]
+            assert (
+                "num_crops" in images
+            ), "num_crops must be provided in images if num_img_tokens is not provided"
+            num_crops = images["num_crops"]
+            num_img_tokens = [
+                _num_crops * self.num_img_tokens for _num_crops in num_crops
+            ]
 
-        images, image_sizes = images['pixel_values'], images['image_sizes']
+        images, image_sizes = images["pixel_values"], images["image_sizes"]
 
         # image_tags needs to start from 1 to n
         image_tags = re.findall(pattern, texts)
@@ -174,11 +202,13 @@ class Phi3VProcessor(ProcessorMixin):
         unique_image_ids = sorted(list(set(image_ids)))
         # image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be [1, 4, 5]
         # check the condition
-        assert unique_image_ids == list(range(1,
-                                              len(unique_image_ids) + 1)), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
+        assert unique_image_ids == list(
+            range(1, len(unique_image_ids) + 1)
+        ), f"image_ids must start from 1, and must be continuous int, e.g. [1, 2, 3], cannot be {unique_image_ids}"
         # total images must be the same as the number of image tags
         assert len(unique_image_ids) == len(
-            images), f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(images)} images"
+            images
+        ), f"total images must be the same as the number of image tags, got {len(unique_image_ids)} image tags and {len(images)} images"
 
         image_ids_pad = [[-iid] * num_img_tokens[iid - 1] for iid in image_ids]
 
@@ -195,10 +225,14 @@ class Phi3VProcessor(ProcessorMixin):
         input_ids = torch.tensor(input_ids, dtype=torch.long).unsqueeze(0)
         attention_mask = (input_ids > -1000000).to(torch.long)
 
-        return BatchFeature(data={"input_ids": input_ids,
-                                  "attention_mask": attention_mask,
-                                  "pixel_values": images,
-                                  "image_sizes": image_sizes})
+        return BatchFeature(
+            data={
+                "input_ids": input_ids,
+                "attention_mask": attention_mask,
+                "pixel_values": images,
+                "image_sizes": image_sizes,
+            }
+        )
 
     # Copied from transformers.models.clip.processing_clip.CLIPProcessor.batch_decode with CLIP->Llama
     def batch_decode(self, *args, **kwargs):

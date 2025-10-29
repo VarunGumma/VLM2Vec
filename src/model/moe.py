@@ -1,0 +1,174 @@
+from transformers.activations import ACT2FN
+from typing import Optional, Union
+import torch.nn.functional as F
+from torch import nn
+import torch
+
+
+def load_balancing_loss_func(
+    gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
+    num_experts: Optional[int] = None,
+    top_k=2,
+    attention_mask: Optional[torch.Tensor] = None,
+) -> Union[torch.Tensor, int]:
+
+    if gate_logits is None or not isinstance(gate_logits, tuple):
+        return 0
+
+    if isinstance(gate_logits, tuple):
+        compute_device = gate_logits[0].device
+        concatenated_gate_logits = torch.cat(
+            [layer_gate.to(compute_device) for layer_gate in gate_logits], dim=0
+        )
+
+    routing_weights = F.softmax(concatenated_gate_logits, dim=-1)
+
+    _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
+
+    expert_mask = F.one_hot(selected_experts, num_experts)
+
+    if attention_mask is None:
+        tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
+        router_prob_per_expert = torch.mean(routing_weights, dim=0)
+    else:
+        batch_size, sequence_length = attention_mask.shape
+        num_hidden_layers = concatenated_gate_logits.shape[0] // (
+            batch_size * sequence_length
+        )
+
+        expert_attention_mask = (
+            attention_mask[None, :, :, None, None]
+            .expand(
+                (num_hidden_layers, batch_size, sequence_length, top_k, num_experts)
+            )
+            .reshape(-1, top_k, num_experts)
+            .to(compute_device)
+        )
+
+        tokens_per_expert = torch.sum(
+            expert_mask.float() * expert_attention_mask, dim=0
+        ) / torch.sum(expert_attention_mask, dim=0)
+
+        router_per_expert_attention_mask = (
+            attention_mask[None, :, :, None]
+            .expand((num_hidden_layers, batch_size, sequence_length, num_experts))
+            .reshape(-1, num_experts)
+            .to(compute_device)
+        )
+
+        router_prob_per_expert = torch.sum(
+            routing_weights * router_per_expert_attention_mask, dim=0
+        ) / torch.sum(router_per_expert_attention_mask, dim=0)
+
+    overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
+    return overall_loss * num_experts
+
+
+class MLP(nn.Module):
+    def __init__(
+        self, hidden_dim: int, intermediate_dim: int, activation: str = "gelu"
+    ):
+        super().__init__()
+        self.act = ACT2FN[activation]
+        self.gate_up_proj = nn.Linear(hidden_dim, 2 * intermediate_dim, bias=False)
+        self.down_proj = nn.Linear(intermediate_dim, hidden_dim, bias=False)
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        gate, up = self.gate_up_proj(hidden_states).chunk(2, dim=-1)
+        return self.down_proj(up * self.act(gate))
+
+
+class Experts(nn.ModuleList):
+    """`
+    ModuleList of experts.
+    """
+
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        activation: str = "gelu",
+        num_experts: int = 16,
+    ):
+        super().__init__()
+
+        for _ in range(num_experts):
+            self.append(MLP(hidden_size, intermediate_size, activation))
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        top_k_index: torch.Tensor,
+        top_k_weights: torch.Tensor,
+    ) -> torch.Tensor:
+        """
+        Args:
+            hidden_states: (batch_size * sequence_length, hidden_dim)
+            selected_experts: (batch_size * sequence_length, top_k)
+            routing_weights: (batch_size * sequence_length, top_k)
+        Returns:
+            (batch_size * sequence_length, hidden_dim)
+        """
+        final_hidden_states = torch.zeros_like(hidden_states)
+        expert_mask = F.one_hot(top_k_index, num_classes=self.num_experts).permute(
+            2, 1, 0
+        )
+
+        expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
+        for expert_idx in expert_hit:
+            idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
+            current_state = hidden_states[None, top_x].reshape(
+                -1, hidden_states.shape[-1]
+            )
+            current_hidden_states = (
+                self[expert_idx](current_state) * top_k_weights[top_x, idx, None]
+            )
+            final_hidden_states.index_add_(
+                0, top_x, current_hidden_states.to(hidden_states.dtype)
+            )
+        return final_hidden_states
+
+
+class SparseMoE(nn.Module):
+    def __init__(
+        self,
+        hidden_size: int,
+        intermediate_size: int,
+        activation: str = "gelu",
+        num_experts: int = 16,
+        num_experts_per_tok: int = 2,
+    ):
+        super().__init__()
+        self.num_experts = num_experts
+        self.top_k = num_experts_per_tok
+        self.gate = nn.Linear(hidden_size, self.num_experts, bias=False)
+        self.experts = Experts(
+            hidden_size,
+            intermediate_size,
+            activation,
+            num_experts,
+        )
+
+    def route_tokens_to_experts(self, hidden_states, router_logits):
+        routing_weights = F.softmax(router_logits.float(), dim=-1)
+        top_k_weights, top_k_index = torch.topk(routing_weights, self.top_k, dim=-1)
+        top_k_weights /= top_k_weights.sum(dim=-1, keepdim=True)
+        top_k_weights = top_k_weights.to(hidden_states.dtype)
+        return top_k_index, top_k_weights
+
+    def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        B, S, D = hidden_states.shape
+        hidden_states = hidden_states.view(-1, D)
+        router_logits = self.gate(hidden_states)
+        top_k_index, top_k_weights = self.route_tokens_to_experts(
+            hidden_states, router_logits
+        )
+        final_hidden_states = self.experts(
+            hidden_states, top_k_index, top_k_weights
+        ).reshape(B, S, D)
+
+        return (
+            (final_hidden_states, router_logits)
+            if self.training
+            else (final_hidden_states, None)
+        )

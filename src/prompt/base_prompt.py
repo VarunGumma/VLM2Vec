@@ -19,7 +19,9 @@ class AutoPrompt(metaclass=ABCMeta):
         )
 
     @classmethod
-    def instantiate(cls, prompt_family, task_name=None, task_type=None, *args, **kwargs):
+    def instantiate(
+        cls, prompt_family, task_name=None, task_type=None, *args, **kwargs
+    ):
         try:
             return cls.registry[prompt_family](task_name, task_type, *args, **kwargs)
         except Exception as e:
@@ -31,10 +33,13 @@ class AutoPrompt(metaclass=ABCMeta):
     def register(cls, prompt_family):
         def inner_wrapper(wrapped_class):
             if prompt_family in cls.registry:
-                print(f"[Alert] AutoPrompt: a class in the same name ({prompt_family}) has been registered")
+                print(
+                    f"[Alert] AutoPrompt: a class in the same name ({prompt_family}) has been registered"
+                )
             else:
                 cls.registry[prompt_family] = wrapped_class
             return wrapped_class
+
         return inner_wrapper
 
     @abstractmethod

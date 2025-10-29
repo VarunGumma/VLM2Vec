@@ -46,6 +46,7 @@ from transformers.image_utils import (
     validate_preprocess_arguments,
 )
 from transformers.utils import TensorType, logging
+
 try:
     # transformers>=4.52
     from transformers.video_utils import VideoInput, make_batched_videos
@@ -53,12 +54,15 @@ except ImportError:
     from transformers.image_utils import VideoInput, make_batched_videos
 
 
-
 logger = logging.get_logger(__name__)
 
 
 def smart_resize(
-    height: int, width: int, factor: int = 28, min_pixels: int = 56 * 56, max_pixels: int = 14 * 14 * 4 * 1280
+    height: int,
+    width: int,
+    factor: int = 28,
+    min_pixels: int = 56 * 56,
+    max_pixels: int = 14 * 14 * 4 * 1280,
 ):
     """Rescales the image so that the following conditions are met:
 
@@ -75,7 +79,11 @@ def smart_resize(
     #     raise ValueError(
     #         f"absolute aspect ratio must be smaller than 200, got {max(height, width) / min(height, width)}"
     #     )
-    if height < factor or width < factor or max(height, width) / min(height, width) > 200:
+    if (
+        height < factor
+        or width < factor
+        or max(height, width) / min(height, width) > 200
+    ):
         # extreme cases, resize to a square
         height = width = max(factor, height, width)
     h_bar = round(height / factor) * factor
@@ -126,7 +134,12 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
             The merge size of the vision encoder to llm encoder.
     """
 
-    model_input_names = ["pixel_values", "image_grid_thw", "pixel_values_videos", "video_grid_thw"]
+    model_input_names = [
+        "pixel_values",
+        "image_grid_thw",
+        "pixel_values_videos",
+        "video_grid_thw",
+    ]
 
     def __init__(
         self,
@@ -149,8 +162,12 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         super().__init__(**kwargs)
         if size is None:
             size = {"shortest_edge": 56 * 56, "longest_edge": 28 * 28 * 1280}
-        elif size is not None and ("shortest_edge" not in size or "longest_edge" not in size):
-            raise ValueError("size must contain 'shortest_edge' and 'longest_edge' keys.")
+        elif size is not None and (
+            "shortest_edge" not in size or "longest_edge" not in size
+        ):
+            raise ValueError(
+                "size must contain 'shortest_edge' and 'longest_edge' keys."
+            )
         # backward compatibility: override size with min_pixels and max_pixels if they are provided
         # @ruimeng: use  min_pixels/max_pixels only when size is not provided
         if not size and min_pixels is not None:
@@ -173,7 +190,6 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         self.temporal_patch_size = temporal_patch_size
         self.merge_size = merge_size
         self.do_convert_rgb = do_convert_rgb
-
 
     @classmethod
     def from_dict(cls, image_processor_dict, **kwargs):
@@ -207,7 +223,6 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
             return image_processor, kwargs
         else:
             return image_processor
-
 
     def _preprocess(
         self,
@@ -309,18 +324,28 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                     max_pixels=size["longest_edge"],
                 )
                 image = resize(
-                    image, size=(resized_height, resized_width), resample=resample, input_data_format=input_data_format
+                    image,
+                    size=(resized_height, resized_width),
+                    resample=resample,
+                    input_data_format=input_data_format,
                 )
 
             if do_rescale:
-                image = self.rescale(image, scale=rescale_factor, input_data_format=input_data_format)
+                image = self.rescale(
+                    image, scale=rescale_factor, input_data_format=input_data_format
+                )
 
             if do_normalize:
                 image = self.normalize(
-                    image=image, mean=image_mean, std=image_std, input_data_format=input_data_format
+                    image=image,
+                    mean=image_mean,
+                    std=image_std,
+                    input_data_format=input_data_format,
                 )
 
-            image = to_channel_dimension_format(image, data_format, input_channel_dim=input_data_format)
+            image = to_channel_dimension_format(
+                image, data_format, input_channel_dim=input_data_format
+            )
             processed_images.append(image)
 
         patches = np.array(processed_images)
@@ -328,7 +353,9 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
             patches = patches.transpose(0, 3, 1, 2)
         if patches.shape[0] % temporal_patch_size != 0:
             repeats = np.repeat(
-                patches[-1][np.newaxis], temporal_patch_size - (patches.shape[0] % temporal_patch_size), axis=0
+                patches[-1][np.newaxis],
+                temporal_patch_size - (patches.shape[0] % temporal_patch_size),
+                axis=0,
             )
             patches = np.concatenate([patches, repeats], axis=0)
         channel = patches.shape[1]
@@ -347,7 +374,8 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
         )
         patches = patches.transpose(0, 3, 6, 4, 7, 2, 1, 5, 8)
         flatten_patches = patches.reshape(
-            grid_t * grid_h * grid_w, channel * temporal_patch_size * patch_size * patch_size
+            grid_t * grid_h * grid_w,
+            channel * temporal_patch_size * patch_size * patch_size,
         )
 
         return flatten_patches, (grid_t, grid_h, grid_w)
@@ -438,7 +466,9 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
 
         if size is not None:
             if "shortest_edge" not in size or "longest_edge" not in size:
-                raise ValueError("size must contain 'shortest_edge' and 'longest_edge' keys.")
+                raise ValueError(
+                    "size must contain 'shortest_edge' and 'longest_edge' keys."
+                )
             min_pixels = size["shortest_edge"]
         elif min_pixels is not None and max_pixels is not None:
             # backward compatibility: override size with min_pixels and max_pixels if they are provided
@@ -450,14 +480,22 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
 
         resample = resample if resample is not None else self.resample
         do_rescale = do_rescale if do_rescale is not None else self.do_rescale
-        rescale_factor = rescale_factor if rescale_factor is not None else self.rescale_factor
+        rescale_factor = (
+            rescale_factor if rescale_factor is not None else self.rescale_factor
+        )
         do_normalize = do_normalize if do_normalize is not None else self.do_normalize
         image_mean = image_mean if image_mean is not None else self.image_mean
         image_std = image_std if image_std is not None else self.image_std
         patch_size = patch_size if patch_size is not None else self.patch_size
-        temporal_patch_size = temporal_patch_size if temporal_patch_size is not None else self.temporal_patch_size
+        temporal_patch_size = (
+            temporal_patch_size
+            if temporal_patch_size is not None
+            else self.temporal_patch_size
+        )
         merge_size = merge_size if merge_size is not None else self.merge_size
-        do_convert_rgb = do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        do_convert_rgb = (
+            do_convert_rgb if do_convert_rgb is not None else self.do_convert_rgb
+        )
 
         if images is not None:
             images = make_flat_list_of_images(images)
@@ -503,7 +541,9 @@ class Qwen2VLImageProcessor(BaseImageProcessor):
                 vision_grid_thws.append(image_grid_thw)
             pixel_values = np.array(pixel_values)
             vision_grid_thws = np.array(vision_grid_thws)
-            data.update({"pixel_values": pixel_values, "image_grid_thw": vision_grid_thws})
+            data.update(
+                {"pixel_values": pixel_values, "image_grid_thw": vision_grid_thws}
+            )
 
         # kept for BC only and should be removed after v5.0
         if videos is not None:

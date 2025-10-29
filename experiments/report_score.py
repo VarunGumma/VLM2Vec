@@ -4,23 +4,53 @@ import re
 
 # Define the datasets
 datasets = [
-    "ImageNet-1K", "N24News", "HatefulMemes", "VOC2007", "SUN397", "Place365", "ImageNet-A", "ImageNet-R", "ObjectNet", "Country211",
-    "OK-VQA", "A-OKVQA", "DocVQA", "InfographicsVQA", "ChartQA", "Visual7W", "ScienceQA", "VizWiz", "GQA", "TextVQA",
-    "VisDial", "CIRR", "VisualNews_t2i", "VisualNews_i2t", "MSCOCO_t2i", "MSCOCO_i2t", "NIGHTS", "WebQA", "FashionIQ", "Wiki-SS-NQ", "OVEN", "EDIS",
-    "MSCOCO", "RefCOCO", "RefCOCO-Matching", "Visual7W-Pointing"
+    "ImageNet-1K",
+    "N24News",
+    "HatefulMemes",
+    "VOC2007",
+    "SUN397",
+    "Place365",
+    "ImageNet-A",
+    "ImageNet-R",
+    "ObjectNet",
+    "Country211",
+    "OK-VQA",
+    "A-OKVQA",
+    "DocVQA",
+    "InfographicsVQA",
+    "ChartQA",
+    "Visual7W",
+    "ScienceQA",
+    "VizWiz",
+    "GQA",
+    "TextVQA",
+    "VisDial",
+    "CIRR",
+    "VisualNews_t2i",
+    "VisualNews_i2t",
+    "MSCOCO_t2i",
+    "MSCOCO_i2t",
+    "NIGHTS",
+    "WebQA",
+    "FashionIQ",
+    "Wiki-SS-NQ",
+    "OVEN",
+    "EDIS",
+    "MSCOCO",
+    "RefCOCO",
+    "RefCOCO-Matching",
+    "Visual7W-Pointing",
 ]
 
 
 # Define the root directory containing the experiment directories
-checkpoint_paths = [
-    "checkpoint_dir/vlm2vec-qwen2vl-v2.0-2b/image/"
-]
+checkpoint_paths = ["checkpoint_dir/vlm2vec-qwen2vl-v2.0-2b/image/"]
 
 
 # Function to extract step number from checkpoint directory name
 def extract_step(checkpoint_name):
-    match = re.search(r'checkpoint-(\d+)', checkpoint_name)
-    return int(match.group(1)) if match else float('inf')
+    match = re.search(r"checkpoint-(\d+)", checkpoint_name)
+    return int(match.group(1)) if match else float("inf")
 
 
 # Dictionary to hold all gathered scores, organized by experiment
@@ -41,7 +71,9 @@ for checkpoint_path in checkpoint_paths:
 
     # Go through each dataset and check if the corresponding score file exists
     for dataset in datasets:
-        score_file = os.path.join(checkpoint_path, f"{dataset}_score.json")  # Score file named like DatasetName_score.json
+        score_file = os.path.join(
+            checkpoint_path, f"{dataset}_score.json"
+        )  # Score file named like DatasetName_score.json
 
         # Check if the score file exists
         if os.path.isfile(score_file):
@@ -52,7 +84,9 @@ for checkpoint_path in checkpoint_paths:
                 elif "precision@1" in score_data:  # v2
                     score = score_data["precision@1"]
                 else:
-                    raise Exception(f'no valid metric (acc or precision@1) found in the {dataset}_score.json')
+                    raise Exception(
+                        f"no valid metric (acc or precision@1) found in the {dataset}_score.json"
+                    )
             checkpoint_scores[dataset] = score
         else:
             checkpoint_scores[dataset] = "N/A"  # If no score file, set to 'N/A'
@@ -62,16 +96,16 @@ for checkpoint_path in checkpoint_paths:
     gathered_scores_by_exp[experiment_dir] = checkpoint_scores
 
 
-
-print('\n' * 5)
+print("\n" * 5)
 # Print gathered scores in a comma-separated format
 header = ["experiment", "checkpoint"] + datasets
 print(",".join(header))  # Print header
 
 for experiment, scores in gathered_scores_by_exp.items():
-    row = [scores["experiment"], scores["checkpoint"]] + [str(scores[dataset]) for dataset in datasets]
+    row = [scores["experiment"], scores["checkpoint"]] + [
+        str(scores[dataset]) for dataset in datasets
+    ]
     print(",".join(row))  # Print each row of scores
-
 
 
 header = ["dataset"] + list(gathered_scores_by_exp.keys())
@@ -101,7 +135,6 @@ df = pd.DataFrame(rows, columns=header)
 # Save to CSV
 df.to_csv("output_scores.csv", index=False)
 print("CSV saved to output_scores.csv")
-
 
 
 # header = ["dataset"] + list(gathered_scores_by_exp.keys())

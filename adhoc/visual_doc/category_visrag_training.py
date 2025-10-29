@@ -8,7 +8,7 @@ base_output_dir = "/fsx/sfr/data/MMEB/Visual_Doc/visrag"
 
 # Dataset name to subfolder mapping
 datasets_to_process = {
-    'openbmb/VisRAG-Ret-Train-In-domain-data': 'Train_in_domain_data',
+    "openbmb/VisRAG-Ret-Train-In-domain-data": "Train_in_domain_data",
 }
 
 # Process each dataset
@@ -21,7 +21,7 @@ for data_name, folder_name in datasets_to_process.items():
     # Group by source
     source_splits = defaultdict(list)
     for example in tqdm(dataset):
-        source_splits[example['source']].append(example)
+        source_splits[example["source"]].append(example)
 
     # Create output subfolder
     output_dir = os.path.join(base_output_dir, folder_name)

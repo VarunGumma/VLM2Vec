@@ -4,8 +4,9 @@ import os.path
 import sys
 
 logging.basicConfig(
-    level=logging.INFO, format='[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]  # Ensures logs appear in stdout
+    level=logging.INFO,
+    format="[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],  # Ensures logs appear in stdout
 )
 logger = logging.getLogger(__name__)
 
@@ -14,7 +15,12 @@ import torch
 import wandb
 import yaml
 from transformers import HfArgumentParser
-from src.arguments import ModelArguments, DataArguments, TrainingArguments
+from src.arguments import (
+    ModelArguments,
+    DataArguments,
+    TrainingArguments,
+    AuxEncoderArguments,
+)
 from src.data.collator.train_collator import MultimodalDataCollator
 from src.data.loader.mixed_dataset import init_mixed_dataset
 from src.model.model import MMEBModel
@@ -29,15 +35,19 @@ def main():
         if arg.startswith("--local-rank="):
             rank = arg.split("=")[1]
             sys.argv.remove(arg)
-            sys.argv.append('--local_rank')
+            sys.argv.append("--local_rank")
             sys.argv.append(rank)
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
+    parser = HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, AuxEncoderArguments)
+    )
 
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    model_args, data_args, training_args, aux_encoder_args = (
+        parser.parse_args_into_dataclasses()
+    )
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
-
+    aux_encoder_args: AuxEncoderArguments
 
     # DEBUG PRINTS for Distributed Setup
     print("Distributed init debug info:")
@@ -51,16 +61,19 @@ def main():
         print(f"torch.distributed.is_initialized: {torch.distributed.is_initialized()}")
         if torch.distributed.is_initialized():
             print(f"torch.distributed.get_rank(): {torch.distributed.get_rank()}")
-            print(f"torch.distributed.get_world_size(): {torch.distributed.get_world_size()}")
-
+            print(
+                f"torch.distributed.get_world_size(): {torch.distributed.get_world_size()}"
+            )
 
     # Check for existing checkpoints
-    if training_args.resume_from == 'auto':
+    if training_args.resume_from == "auto":
         resume_checkpoint_dir = find_latest_checkpoint(training_args.output_dir)
         if resume_checkpoint_dir:
             logger.info(f"Resuming from checkpoint: {resume_checkpoint_dir}")
     elif training_args.resume_from.isdigit():
-        resume_checkpoint_dir = os.path.join(training_args.output_dir, f'checkpoint-{training_args.resume_from}')
+        resume_checkpoint_dir = os.path.join(
+            training_args.output_dir, f"checkpoint-{training_args.resume_from}"
+        )
         if os.path.exists(resume_checkpoint_dir):
             logger.info(f"Resuming from checkpoint: {resume_checkpoint_dir}")
     else:
@@ -68,31 +81,53 @@ def main():
         logger.info("No checkpoint found. Starting fresh training.")
 
     # Initialize WandB if enabled
-    if 'wandb' in training_args.report_to:
-        if (torch.distributed.is_initialized() and torch.distributed.get_rank() == 0) or (not torch.distributed.is_initialized()):
-            print_rank('init wandb')
-            wandb.init(project=training_args.project_name, name=training_args.run_name, mode="online")
+    if "wandb" in training_args.report_to:
+        if (
+            torch.distributed.is_initialized() and torch.distributed.get_rank() == 0
+        ) or (not torch.distributed.is_initialized()):
+            print_rank("init wandb")
+            wandb.init(
+                project=training_args.project_name,
+                name=training_args.run_name,
+                mode="online",
+            )
             wandb.config.update(model_args)
             wandb.config.update(data_args)
             wandb.config.update(training_args)
 
-    model = MMEBModel.build(model_args)
-    model_backbone = get_backbone_name(hf_config=model.config)
-    setattr(model_args, 'model_backbone', model_backbone)
-    setattr(training_args, 'model_backbone', model_backbone)
-    print_rank(f'model_backbone: {model_backbone}')
-    processor = load_processor(model_args, data_args)
-    setattr(model, 'processor', processor)
+            if model_args.add_aux_encoder:
+                wandb.config.update(aux_encoder_args)
 
-    with open(data_args.dataset_config, 'r') as yaml_file:
+    model = MMEBModel.build(model_args)
+
+    if model_args.add_aux_encoder:
+        model.build_aux_encoder(
+            in_dim=model.config.hidden_size,
+            model_args=aux_encoder_args,
+        )
+
+    model_backbone = get_backbone_name(hf_config=model.config)
+    setattr(model_args, "model_backbone", model_backbone)
+    setattr(training_args, "model_backbone", model_backbone)
+    print_rank(f"model_backbone: {model_backbone}")
+    processor = load_processor(model_args, data_args)
+    setattr(model, "processor", processor)
+
+    with open(data_args.dataset_config, "r") as yaml_file:
         dataset_config = yaml.safe_load(yaml_file)
         if data_args.data_basedir:
             for _, task_config in dataset_config.items():
-                image_dir = task_config.get('image_dir')
+                image_dir = task_config.get("image_dir")
                 if image_dir and not os.path.isabs(image_dir):
-                    task_config['image_dir'] = os.path.join(data_args.data_basedir, image_dir)
-        train_dataset = init_mixed_dataset(dataset_config, model_args, data_args, training_args)
-    train_collator = MultimodalDataCollator(processor, model_args, data_args, training_args)
+                    task_config["image_dir"] = os.path.join(
+                        data_args.data_basedir, image_dir
+                    )
+        train_dataset = init_mixed_dataset(
+            dataset_config, model_args, data_args, training_args
+        )
+    train_collator = MultimodalDataCollator(
+        processor, model_args, data_args, training_args
+    )
 
     trainer_cls = GradCacheLateProcessTrainer
     trainer = trainer_cls(

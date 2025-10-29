@@ -1,56 +1,104 @@
 import copy
 from src.prompt.base_prompt import AutoPrompt
 
+
 @AutoPrompt.register("tart")
 def load_tart_prompt(task_name, task_type="Retrieval", *args, **kwargs):
-    if task_name.endswith('_small'):
+    if task_name.endswith("_small"):
         task_name = task_name[:-6]
-    if task_name.lower().startswith('cqadupstack'):
-        prompt_dict = copy.copy(tart_prompts_map['cqadupstack'])
+    if task_name.lower().startswith("cqadupstack"):
+        prompt_dict = copy.copy(tart_prompts_map["cqadupstack"])
     else:
-        assert task_name in tart_prompts_map, f'{task_name} is not supported in the TART prompts'
+        assert (
+            task_name in tart_prompts_map
+        ), f"{task_name} is not supported in the TART prompts"
         prompt_dict = copy.copy(tart_prompts_map[task_name.lower()])
-    SEP = ' [SEP] '  # used in BERRI
-    prompt_dict['q_prompt'] += f'{SEP}'
-    prompt_dict['d_prompt'] += f'{SEP}'
+    SEP = " [SEP] "  # used in BERRI
+    prompt_dict["q_prompt"] += f"{SEP}"
+    prompt_dict["d_prompt"] += f"{SEP}"
     return prompt_dict
 
 
 tart_prompts_map = {
     # added by Rui
-    'AllNLI': {'q_prompt': 'Represent the sentence to retrieve semantically similar sentences: ',
-               'd_prompt': 'Represent the sentence to retrieve semantically similar sentences: '},
-
+    "AllNLI": {
+        "q_prompt": "Represent the sentence to retrieve semantically similar sentences: ",
+        "d_prompt": "Represent the sentence to retrieve semantically similar sentences: ",
+    },
     # instructions used for BEIR evaluations (TART paper table 9: https://arxiv.org/pdf/2211.09260.pdf)
-    "trec-covid": {"q_prompt": "Retrieve Scientific paper paragraph to answer this question", "d_prompt": "pubmed abstract related to COVID19"},
-    "nfcorpus": {"q_prompt": "Retrieve Scientific paper paragraph to answer this question", "d_prompt": "pubmed abstract"},
-    "fiqa": {"q_prompt": "Find financial web article paragraph to answer", "d_prompt": "Investment related StackExchange"},
-    "arguana": {"q_prompt": "Retrieve an argument that counter argues the following paragraph", "d_prompt": "argument"},
-    "webis-touche2020": {"q_prompt": "You have to retrieve an argument to this debate question", "d_prompt": "argument paragraph"},
-    "dbpedia-entity": {"q_prompt": "Retrieve a Wikipedia introduction paragraph of the following entity", "d_prompt": "wikipedia paragraph"},
-    "scidocs": {"q_prompt": "Find scientific paper titles that are related to the following", "d_prompt": "scientific paper abstract"},
-    "climate-fever": {"q_prompt": "I want to know if the following claim is true or not. Retrieve a Wikipedia paragraph on climate change for this", "d_prompt": "wikipedia paragraph"},
-    "scifact": {"q_prompt": "Retrieve a scientific paper sentence to verify if the following claim is true", "d_prompt": "scientific paper abstract"},
-
+    "trec-covid": {
+        "q_prompt": "Retrieve Scientific paper paragraph to answer this question",
+        "d_prompt": "pubmed abstract related to COVID19",
+    },
+    "nfcorpus": {
+        "q_prompt": "Retrieve Scientific paper paragraph to answer this question",
+        "d_prompt": "pubmed abstract",
+    },
+    "fiqa": {
+        "q_prompt": "Find financial web article paragraph to answer",
+        "d_prompt": "Investment related StackExchange",
+    },
+    "arguana": {
+        "q_prompt": "Retrieve an argument that counter argues the following paragraph",
+        "d_prompt": "argument",
+    },
+    "webis-touche2020": {
+        "q_prompt": "You have to retrieve an argument to this debate question",
+        "d_prompt": "argument paragraph",
+    },
+    "dbpedia-entity": {
+        "q_prompt": "Retrieve a Wikipedia introduction paragraph of the following entity",
+        "d_prompt": "wikipedia paragraph",
+    },
+    "scidocs": {
+        "q_prompt": "Find scientific paper titles that are related to the following",
+        "d_prompt": "scientific paper abstract",
+    },
+    "climate-fever": {
+        "q_prompt": "I want to know if the following claim is true or not. Retrieve a Wikipedia paragraph on climate change for this",
+        "d_prompt": "wikipedia paragraph",
+    },
+    "scifact": {
+        "q_prompt": "Retrieve a scientific paper sentence to verify if the following claim is true",
+        "d_prompt": "scientific paper abstract",
+    },
     # BEIR instructions from training (msmarco, NQ, HotpotQA, fever, quora)
-    "msmarco": {"q_prompt": "Retrieve a web paragraph that answers the following", "d_prompt": "web paragraph"},
-
+    "msmarco": {
+        "q_prompt": "Retrieve a web paragraph that answers the following",
+        "d_prompt": "web paragraph",
+    },
     # prompts added by us
-    "cqadupstack": {"q_prompt": "Help me to find a related question and its body asked on StackExchange", "d_prompt": "stack exchange question body"},
-    "bioasq": {"q_prompt": "Retrieve Scientific paper paragraph to answer this question", "d_prompt": "pubmed abstract"},
-    "signal1m": {"q_prompt": "Retrieve tweets relevant to the news article title following", "d_prompt": "tweet"},
-    "trec-news": {"q_prompt": "Retrieve relevant news articles that provide background information about the following news headline", "d_prompt": "news article"},
-    "robust04": {"q_prompt": "Retrieve relevant news articles to answer the following", "d_prompt": "news article"},
-
+    "cqadupstack": {
+        "q_prompt": "Help me to find a related question and its body asked on StackExchange",
+        "d_prompt": "stack exchange question body",
+    },
+    "bioasq": {
+        "q_prompt": "Retrieve Scientific paper paragraph to answer this question",
+        "d_prompt": "pubmed abstract",
+    },
+    "signal1m": {
+        "q_prompt": "Retrieve tweets relevant to the news article title following",
+        "d_prompt": "tweet",
+    },
+    "trec-news": {
+        "q_prompt": "Retrieve relevant news articles that provide background information about the following news headline",
+        "d_prompt": "news article",
+    },
+    "robust04": {
+        "q_prompt": "Retrieve relevant news articles to answer the following",
+        "d_prompt": "news article",
+    },
     # instructions used for X2 evaluations (TART paper table 9: https://arxiv.org/pdf/2211.09260.pdf)
     "wikiqa": {"q_prompt": "Retrieve an answer sentence from Wikipedia"},
     "ambigqa": {"q_prompt": "Retrieve a question that is similar to this"},
     "scifact_x2": {"q_prompt": "Retrieve scientific evidence to verify this claim"},
-    "gooaq-technical": {"q_prompt": "Find a StackExchange forum that answers this question"},
-    "codesearchnet-py": {"q_prompt": "Retrieve a python code that implements the following feature"},
+    "gooaq-technical": {
+        "q_prompt": "Find a StackExchange forum that answers this question"
+    },
+    "codesearchnet-py": {
+        "q_prompt": "Retrieve a python code that implements the following feature"
+    },
     "linkso-py": {"q_prompt": "You have to find a python implementation of this"},
-
-
     # instructions used for training (https://github.com/facebookresearch/tart/blob/main/BERRI/berri_instructions.tsv)
     "nq": {
         "dataset": "nq",
@@ -63,7 +111,7 @@ tart_prompts_map = {
         "prompt_5": "Give me a Wikipedia paragraph answering this open-domain question. ",
         "prompt_6": "A Wikipedia paragraph providing sufficient evidence to answer this question",
         "prompt_7": "Your job is to find a Wikipedia paragraph that answers my question",
-        "prompt_8": "You need to retrieve an evidence paragraph from Wikipedia to answer this question"
+        "prompt_8": "You need to retrieve an evidence paragraph from Wikipedia to answer this question",
     },
     "quora": {
         "dataset": "quora",
@@ -76,7 +124,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "fever": {
         "dataset": "fever",
@@ -89,7 +137,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "hotpotqa": {
         "dataset": "hotpotqa",
@@ -102,7 +150,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "altlex": {
         "dataset": "altlex",
@@ -114,7 +162,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "cnn_dailymail": {
         "dataset": "cnn_dailymail",
@@ -126,7 +174,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "coco_captions": {
         "dataset": "coco_captions",
@@ -138,7 +186,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "codesearch_go": {
         "dataset": "codesearch_go",
@@ -150,7 +198,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "codesearch_java": {
         "dataset": "codesearch_java",
@@ -162,7 +210,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "codesearch_javascript": {
         "dataset": "codesearch_javascript",
@@ -174,7 +222,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "codesearch_ruby": {
         "dataset": "codesearch_ruby",
@@ -186,7 +234,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "eli5_question_answer": {
         "dataset": "eli5_question_answer",
@@ -198,7 +246,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "gigaword": {
         "dataset": "gigaword",
@@ -210,7 +258,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "yahoo_answers_title_answer": {
         "dataset": "yahoo_answers_title_answer",
@@ -222,7 +270,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "mdmcqa": {
         "dataset": "mdmcqa",
@@ -234,7 +282,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "medical_sim": {
         "dataset": "medical_sim",
@@ -246,7 +294,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "msmarco-triplets": {
         "dataset": "msmarco-triplets",
@@ -259,7 +307,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "multilexsum": {
         "dataset": "multilexsum",
@@ -271,7 +319,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "oqa": {
         "dataset": "oqa",
@@ -283,7 +331,7 @@ tart_prompts_map = {
         "prompt_5": "An open-domain question that is duplicated with the following",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "agnews": {
         "dataset": "agnews",
@@ -295,7 +343,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "pubmedqa": {
         "dataset": "pubmedqa",
@@ -307,7 +355,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "qrecc": {
         "dataset": "qrecc",
@@ -319,7 +367,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "record": {
         "dataset": "record",
@@ -331,7 +379,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "scitldr": {
         "dataset": "scitldr",
@@ -343,7 +391,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "searchQA_top5_snippets": {
         "dataset": "searchQA_top5_snippets",
@@ -355,7 +403,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "sentence-compression": {
         "dataset": "sentence-compression",
@@ -367,7 +415,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "npr": {
         "dataset": "npr",
@@ -379,7 +427,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "squad_pairs": {
         "dataset": "squad_pairs",
@@ -391,7 +439,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "stackexchange_duplicate_questions_title-body_title-body": {
         "dataset": "stackexchange_duplicate_questions_title-body_title-body",
@@ -403,7 +451,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "stackexchange_duplicate_questions_title_title": {
         "dataset": "stackexchange_duplicate_questions_title_title",
@@ -415,7 +463,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "paq": {
         "dataset": "paq",
@@ -427,7 +475,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "triviaqa": {
         "dataset": "triviaqa",
@@ -439,7 +487,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "wikihow": {
         "dataset": "wikihow",
@@ -451,7 +499,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "wow": {
         "dataset": "wow",
@@ -463,7 +511,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "xsum": {
         "dataset": "xsum",
@@ -475,7 +523,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "ccnews": {
         "dataset": "ccnews",
@@ -487,7 +535,7 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
+        "prompt_8": "",
     },
     "wow_response": {
         "dataset": "wow response",
@@ -499,7 +547,6 @@ tart_prompts_map = {
         "prompt_5": "",
         "prompt_6": "",
         "prompt_7": "",
-        "prompt_8": ""
-    }
-
+        "prompt_8": "",
+    },
 }

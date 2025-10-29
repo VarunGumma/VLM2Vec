@@ -9,7 +9,11 @@ def sample_dataset(dataset, **kwargs):
     dataset_name = kwargs.get("dataset_name", "UNKNOWN-DATASET")
     num_sample_per_subset = kwargs.get("num_sample_per_subset", None)
 
-    if num_sample_per_subset is not None and type(num_sample_per_subset) is str and num_sample_per_subset.isdigit():
+    if (
+        num_sample_per_subset is not None
+        and type(num_sample_per_subset) is str
+        and num_sample_per_subset.isdigit()
+    ):
         num_sample_per_subset = int(num_sample_per_subset)
     if type(num_sample_per_subset) is int and num_sample_per_subset < dataset.num_rows:
         dataset = dataset.select(range(num_sample_per_subset))

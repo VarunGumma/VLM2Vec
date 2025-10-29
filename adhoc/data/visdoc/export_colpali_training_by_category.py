@@ -13,7 +13,7 @@ dataset = load_dataset("vidore/colpali_train_set", split="train")
 # Group by source
 source_splits = defaultdict(list)
 for example in tqdm(dataset, desc="Categorizing"):
-    source_splits[example['source']].append(example)
+    source_splits[example["source"]].append(example)
 
 # Save each split as a Parquet file
 for source, examples in source_splits.items():

@@ -9,7 +9,7 @@ dataset = load_dataset("vidore/colpali_train_set", split="train")
 # Group by source
 source_splits = defaultdict(list)
 for example in tqdm(dataset):
-    source_splits[example['source']].append(example)
+    source_splits[example["source"]].append(example)
 
 # Output directory
 output_dir = "/fsx/sfr/data/MMEB/Visual_Doc/vidore"

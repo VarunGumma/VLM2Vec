@@ -13,10 +13,12 @@ dataset = load_dataset("yubo2333/MMLongBench-Doc")["train"]
 # Directory containing PDFs
 pdf_dir = "/fsx/sfr/data/MMEB/Visual_Doc/mmlongbench/documents"
 
+
 def encode_image(image):
     buffered = BytesIO()
     image.save(buffered, format="PNG")
     return base64.b64encode(buffered.getvalue()).decode()
+
 
 # Dictionary to store images
 all_images = {}
@@ -34,7 +36,7 @@ for qid, doc in enumerate(dataset):
     pdf_file_name = doc["doc_id"]
     pdf_path = os.path.join(pdf_dir, pdf_file_name)
 
-    if doc['evidence_pages'] == []:
+    if doc["evidence_pages"] == []:
         continue
 
     # Ensure the file exists before processing
@@ -69,7 +71,7 @@ for qid, doc in enumerate(dataset):
     all_images[pdf_file_name] = images
 
     try:
-        evidence_pages = ast.literal_eval(doc['evidence_pages'])
+        evidence_pages = ast.literal_eval(doc["evidence_pages"])
         if not isinstance(evidence_pages, list):
             raise ValueError("Invalid evidence pages format")
     except Exception as e:
@@ -78,28 +80,30 @@ for qid, doc in enumerate(dataset):
 
     if len(evidence_pages) == 0:
         continue
-    queries.append({
-        "query-id": qid,
-        "query": doc["question"],
-        "corpus_range": list(range(base_corpus_id, base_corpus_id + len(images)))
-    })
+    queries.append(
+        {
+            "query-id": qid,
+            "query": doc["question"],
+            "corpus_range": list(range(base_corpus_id, base_corpus_id + len(images))),
+        }
+    )
 
     for page_number in evidence_pages:
-        qrels.append({
-            'query-id': qid,
-            'corpus-id': base_corpus_id + int(page_number),
-            'score': 1
-        })
+        qrels.append(
+            {
+                "query-id": qid,
+                "corpus-id": base_corpus_id + int(page_number),
+                "score": 1,
+            }
+        )
 
     # Store encoded images in corpus if not already added
     for img_id, image in enumerate(images):
         corpus_id = base_corpus_id + img_id  # Fix corpus ID numbering
         if corpus_id not in existing_corpus_ids:
-            corpus.append({
-                "corpus-id": corpus_id,
-                "image": encode_image(image)
-            })
+            corpus.append({"corpus-id": corpus_id, "image": encode_image(image)})
             existing_corpus_ids.add(corpus_id)
+
 
 # Function to save data in JSONL format
 def save_jsonl(filename, data):
@@ -108,9 +112,10 @@ def save_jsonl(filename, data):
             json.dump(entry, f)
             f.write("\n")
 
-print('size of qrels:', len(qrels))
-print('size of queries:', len(queries))
-print('size of corpus:', len(corpus))
+
+print("size of qrels:", len(qrels))
+print("size of queries:", len(queries))
+print("size of corpus:", len(corpus))
 
 save_dir = "/fsx/sfr/data/MMEB/Visual_Doc/mmlongbench/test/"
 os.makedirs(save_dir, exist_ok=True)

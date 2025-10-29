@@ -40,7 +40,7 @@ NOAVG_KEYS = [
 ]
 
 
-results_folder =  '/export/xgen-embedding/release/SFR-Embedding-Mistral-v2/RC3/eval_output/public_mteb/beir'
+results_folder = "/export/xgen-embedding/release/SFR-Embedding-Mistral-v2/RC3/eval_output/public_mteb/beir"
 # Ensure at least 1 character btw CQADupstack & Retrieval
 files = glob.glob(f'{results_folder.rstrip("/")}/CQADupstack*?*Retrieval.json')
 
@@ -66,13 +66,17 @@ if len(files) == len(TASK_LIST_CQA):
                         )
                     all_results[split][metric] = score
     final_results = results
-    final_results['scores'] = all_results
+    final_results["scores"] = all_results
     final_results["task_name"] = "CQADupstackRetrieval"
     final_results["evaluation_time"] = None
 
     logger.info(all_results)
-    logger.info(f"Saving results to {os.path.join(results_folder, 'CQADupstackRetrieval.json')}")
-    with open(os.path.join(results_folder, "CQADupstackRetrieval.json"), "w", encoding="utf-8") as f:
+    logger.info(
+        f"Saving results to {os.path.join(results_folder, 'CQADupstackRetrieval.json')}"
+    )
+    with open(
+        os.path.join(results_folder, "CQADupstackRetrieval.json"), "w", encoding="utf-8"
+    ) as f:
         json.dump(final_results, f, indent=4)
 else:
     logger.warning(

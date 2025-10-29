@@ -34,8 +34,10 @@ class LamRAQwen25VL(nn.Module):
         config.use_cache = False
 
         self.base = Qwen2_5_VLForConditionalGeneration.from_pretrained(
-            model_name, config=config,
-            torch_dtype=torch.bfloat16, low_cpu_mem_usage=True
+            model_name,
+            config=config,
+            torch_dtype=torch.bfloat16,
+            low_cpu_mem_usage=True,
         )
         self.base.eval()
         self.normalize = True
@@ -46,10 +48,12 @@ class LamRAQwen25VL(nn.Module):
         max_pixels = max_image_tokens * 28 * 28
         size = {"shortest_edge": min_pixels, "longest_edge": max_pixels}
         self.max_length = max_length
-        self.processor = Qwen2_5_VLProcessor.from_pretrained(model_name, size=size, **kwargs)
-        self.processor.tokenizer.padding_side = 'left'
-        self.default_instruction = 'You are a helpful assistant.'
-        self.sep = ' '
+        self.processor = Qwen2_5_VLProcessor.from_pretrained(
+            model_name, size=size, **kwargs
+        )
+        self.processor.tokenizer.padding_side = "left"
+        self.default_instruction = "You are a helpful assistant."
+        self.sep = " "
 
     def construct_messages(self, text=None, image=None):
         if text is not None and image is not None:
@@ -58,30 +62,15 @@ class LamRAQwen25VL(nn.Module):
                     "role": "user",
                     "content": [
                         {"type": "image", "image": image},
-                        {"type": "text", "text": text}
-                    ]
+                        {"type": "text", "text": text},
+                    ],
                 },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": f"<emb>."}
-                    ]
-                },
+                {"role": "assistant", "content": [{"type": "text", "text": f"<emb>."}]},
             ]
         elif image is None:
             message = [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": f"{text}\n"}
-                    ]
-                },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": f"<emb>."}
-                    ]
-                },
+                {"role": "user", "content": [{"type": "text", "text": f"{text}\n"}]},
+                {"role": "assistant", "content": [{"type": "text", "text": f"<emb>."}]},
             ]
         else:
             message = [
@@ -89,15 +78,13 @@ class LamRAQwen25VL(nn.Module):
                     "role": "user",
                     "content": [
                         {"type": "image", "image": image},
-                        {"type": "text", "text": f"\nSummarize above image in one word: "}
-                    ]
+                        {
+                            "type": "text",
+                            "text": f"\nSummarize above image in one word: ",
+                        },
+                    ],
                 },
-                {
-                    "role": "assistant",
-                    "content": [
-                        {"type": "text", "text": f"<emb>."}
-                    ]
-                },
+                {"role": "assistant", "content": [{"type": "text", "text": f"<emb>."}]},
             ]
         return message
 
@@ -113,17 +100,29 @@ class LamRAQwen25VL(nn.Module):
         image_grid_thw: Optional[torch.LongTensor] = None,
         # video_grid_thw: Optional[torch.LongTensor] = None,
         pooling_mask: Optional[torch.LongTensor] = None,
-        **kwargs
+        **kwargs,
     ) -> torch.Tensor:
         if inputs_embeds is None:
             inputs_embeds = self.base.model.embed_tokens(input_ids)
-            has_image = (pixel_values is not None) and any([pv is not None for pv in pixel_values])
+            has_image = (pixel_values is not None) and any(
+                [pv is not None for pv in pixel_values]
+            )
             if has_image:
                 if type(pixel_values) is list:
-                    pixel_values = torch.cat([torch.from_numpy(pv) for pv in pixel_values]).to(input_ids.device)  # shape=[BS*n_patch,C*H*W]
-                    image_grid_thw = torch.cat([torch.from_numpy(thw) for thw in image_grid_thw]).to(input_ids.device)  # shape=[BS,H,W]
+                    pixel_values = torch.cat(
+                        [torch.from_numpy(pv) for pv in pixel_values]
+                    ).to(
+                        input_ids.device
+                    )  # shape=[BS*n_patch,C*H*W]
+                    image_grid_thw = torch.cat(
+                        [torch.from_numpy(thw) for thw in image_grid_thw]
+                    ).to(
+                        input_ids.device
+                    )  # shape=[BS,H,W]
                 pixel_values = pixel_values.type(self.base.visual.dtype)
-                image_embeds = self.base.visual(pixel_values, grid_thw=image_grid_thw).to(inputs_embeds.device)
+                image_embeds = self.base.visual(
+                    pixel_values, grid_thw=image_grid_thw
+                ).to(inputs_embeds.device)
                 image_mask = input_ids == self.base.config.image_token_id
                 inputs_embeds[image_mask] = image_embeds
             # if pixel_values_videos is not None:
@@ -146,34 +145,44 @@ class LamRAQwen25VL(nn.Module):
         )
 
         pooling_mask = attention_mask if pooling_mask is None else pooling_mask
-        left_padding = (pooling_mask[:, -1].sum() == pooling_mask.shape[0])  # TODO
+        left_padding = pooling_mask[:, -1].sum() == pooling_mask.shape[0]  # TODO
         if left_padding:
             embeddings = outputs.last_hidden_state[:, -1]
         else:
             sequence_lengths = pooling_mask.sum(dim=1) - 1
             batch_size = outputs.last_hidden_state.shape[0]
-            embeddings = outputs.last_hidden_state[torch.arange(
-                batch_size, device=outputs.last_hidden_state.device
-            ), sequence_lengths]
+            embeddings = outputs.last_hidden_state[
+                torch.arange(batch_size, device=outputs.last_hidden_state.device),
+                sequence_lengths,
+            ]
         if self.normalize:
             embeddings = torch.nn.functional.normalize(embeddings, p=2, dim=1)
         return embeddings.contiguous()
 
-    def embed(self, texts: list[str], images: list[Image.Image], is_query=True, instruction=None, **kwargs):
+    def embed(
+        self,
+        texts: list[str],
+        images: list[Image.Image],
+        is_query=True,
+        instruction=None,
+        **kwargs,
+    ):
         # self.base.to(self.device)  # why this?...
         # Inputs must be batched
         input_texts, input_images = list(), list()
         for t, img_path in zip(texts, images):
             if not is_query or instruction is None:
                 instruction = self.default_instruction
-            input_str = ''
+            input_str = ""
             if img_path is None:
                 input_images = None  # All examples in the same batch are consistent
             else:
                 img = fetch_image(img_path)
                 input_images.append(img)
             msg = self.construct_messages(text=t, image=img_path)
-            text = self.processor.apply_chat_template(msg, tokenize=False, add_generation_prompt=True)
+            text = self.processor.apply_chat_template(
+                msg, tokenize=False, add_generation_prompt=True
+            )
             input_texts.append(text)
 
         inputs = self.processor(
@@ -182,7 +191,7 @@ class LamRAQwen25VL(nn.Module):
             padding=True,
             truncation=True,
             max_length=self.max_length,
-            return_tensors='pt'
+            return_tensors="pt",
         )
         inputs = {k: v.to(self.device) for k, v in inputs.items()}  # TODO
         with torch.no_grad():
@@ -190,7 +199,9 @@ class LamRAQwen25VL(nn.Module):
         return embeddings
 
     def encode(self, sentences: list[str], *, prompt_name=None, **kwargs):
-        return self.get_fused_embeddings(texts=sentences, prompt_name=prompt_name, **kwargs)
+        return self.get_fused_embeddings(
+            texts=sentences, prompt_name=prompt_name, **kwargs
+        )
 
     def encode_queries(self, queries: List[str], **kwargs):
         embeddings = self.encode(queries, **kwargs)
@@ -199,14 +210,20 @@ class LamRAQwen25VL(nn.Module):
     def encode_corpus(self, corpus: List[Dict[str, str]], **kwargs):
         if type(corpus) is dict:
             sentences = [
-                (corpus["title"][i] + self.sep + corpus["text"][i]).strip()
-                if "title" in corpus
-                else corpus["text"][i].strip()
+                (
+                    (corpus["title"][i] + self.sep + corpus["text"][i]).strip()
+                    if "title" in corpus
+                    else corpus["text"][i].strip()
+                )
                 for i in range(len(corpus["text"]))
             ]
         else:
             sentences = [
-                (doc["title"] + self.sep + doc["text"]).strip() if "title" in doc else doc["text"].strip()
+                (
+                    (doc["title"] + self.sep + doc["text"]).strip()
+                    if "title" in doc
+                    else doc["text"].strip()
+                )
                 for doc in corpus
             ]
         embeddings = self.encode(sentences, is_query=False, **kwargs)
@@ -218,13 +235,18 @@ class LamRAQwen25VL(nn.Module):
     def get_text_embeddings(self, texts: list[str], **kwargs):
         return self.get_fused_embeddings(texts=texts, **kwargs)
 
-    def get_fused_embeddings(self, texts: list[str] = None, images: list[Image.Image] | DataLoader = None, **kwargs):
+    def get_fused_embeddings(
+        self,
+        texts: list[str] = None,
+        images: list[Image.Image] | DataLoader = None,
+        **kwargs,
+    ):
         if isinstance(images, DataLoader):
             image_loader = images
             batch_size = image_loader.batch_size
             image_loader.dataset.transform = None
         else:
-            batch_size = kwargs.pop('batch_size', 32)
+            batch_size = kwargs.pop("batch_size", 32)
             if images is None:
                 image_loader = None
             else:
@@ -245,10 +267,18 @@ class LamRAQwen25VL(nn.Module):
 
         all_embeddings = list()
         none_batch = [None] * batch_size
-        show_progress_bar = kwargs.pop('show_progress_bar', True)
-        pbar = tqdm(total=n_batch, disable=not show_progress_bar, mininterval=1, miniters=10, desc='encode')
-        for n, img_batch in zip(range(0, n_batch * batch_size, batch_size), image_loader):
-            text_batch = none_batch if texts is None else texts[n: n+batch_size]
+        show_progress_bar = kwargs.pop("show_progress_bar", True)
+        pbar = tqdm(
+            total=n_batch,
+            disable=not show_progress_bar,
+            mininterval=1,
+            miniters=10,
+            desc="encode",
+        )
+        for n, img_batch in zip(
+            range(0, n_batch * batch_size, batch_size), image_loader
+        ):
+            text_batch = none_batch if texts is None else texts[n : n + batch_size]
             img_batch = none_batch if img_batch is None else img_batch
             embeddings = self.embed(texts=text_batch, images=img_batch, **kwargs)
             pbar.update(1)
@@ -289,7 +319,11 @@ def floor_by_factor(number: int, factor: int) -> int:
 
 
 def smart_resize(
-    height: int, width: int, factor: int = IMAGE_FACTOR, min_pixels: int = MIN_PIXELS, max_pixels: int = MAX_PIXELS
+    height: int,
+    width: int,
+    factor: int = IMAGE_FACTOR,
+    min_pixels: int = MIN_PIXELS,
+    max_pixels: int = MAX_PIXELS,
 ) -> tuple[int, int]:
     """
     Rescales the image so that the following conditions are met:
@@ -322,12 +356,14 @@ def smart_resize(
     return h_bar, w_bar
 
 
-def fetch_image(image: str | Image.Image, size_factor: int = IMAGE_FACTOR) -> Image.Image:
+def fetch_image(
+    image: str | Image.Image, size_factor: int = IMAGE_FACTOR
+) -> Image.Image:
     image_obj = None
     if isinstance(image, Image.Image):
         image_obj = image
     elif image.startswith("http://") or image.startswith("https://"):
-        headers = {'User-Agent': 'My User Agent 1.0'}
+        headers = {"User-Agent": "My User Agent 1.0"}
         image_obj = Image.open(requests.get(image, headers=headers, stream=True).raw)
     elif image.startswith("file://"):
         image_obj = Image.open(image[7:])
@@ -339,7 +375,9 @@ def fetch_image(image: str | Image.Image, size_factor: int = IMAGE_FACTOR) -> Im
     else:
         image_obj = Image.open(image)
     if image_obj is None:
-        raise ValueError(f"Unrecognized image input, support local path, http url, base64 and PIL.Image, got {image}")
+        raise ValueError(
+            f"Unrecognized image input, support local path, http url, base64 and PIL.Image, got {image}"
+        )
     image = image_obj.convert("RGB")
     ## resize
     # if "resized_height" in ele and "resized_width" in ele:
@@ -362,4 +400,3 @@ def fetch_image(image: str | Image.Image, size_factor: int = IMAGE_FACTOR) -> Im
     image = image.resize((resized_width, resized_height))
 
     return image
-
