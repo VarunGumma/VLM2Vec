@@ -7,8 +7,6 @@ PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
 
 export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
-export WANDB_API_KEY="70b91dcaa308db2b0925e8971aeb143fb244f32a"
-export HUGGING_FACE_HUB_TOKEN="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"
 export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.3layer.rf64.ide8"
 
 export WANDB_NAME=$EXP_NAME
