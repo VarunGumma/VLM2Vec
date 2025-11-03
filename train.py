@@ -2,6 +2,7 @@
 import logging
 import os.path
 import sys
+import warnings
 
 logging.basicConfig(
     level=logging.INFO,
@@ -9,6 +10,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)],  # Ensures logs appear in stdout
 )
 logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore")
 
 import sys
 import torch
@@ -101,15 +103,21 @@ def main():
     model = MMEBModel.build(model_args)
 
     if model_args.add_aux_encoder:
-        model.build_aux_encoder(
-            in_dim=model.config.hidden_size,
-            model_args=aux_encoder_args,
-        )
+        # TODO: This is very important
+        # make sure the aux encoder config is correct
+        # Especially when using parallel encoder setting
+        model.build_aux_encoder(aux_encoder_args)
+
+    # sum the trainable parameters
+    total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+    print_master(f"Model: {model}")
+    print_master(f"Total trainable parameters: {(total_params / 1e6):.2f}M")
 
     model_backbone = get_backbone_name(hf_config=model.config)
     setattr(model_args, "model_backbone", model_backbone)
     setattr(training_args, "model_backbone", model_backbone)
-    print_rank(f"model_backbone: {model_backbone}")
+    print_master(f"model_backbone: {model_backbone}")
     processor = load_processor(model_args, data_args)
     setattr(model, "processor", processor)
 

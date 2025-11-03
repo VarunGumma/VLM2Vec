@@ -5,6 +5,7 @@ import shutil
 import sys
 import time
 from datetime import timedelta
+from safetensors.torch import save_file
 
 from packaging import version
 from accelerate import skip_first_batches, DistributedType, InitProcessGroupKwargs
@@ -139,6 +140,19 @@ class MMEBTrainer(Trainer):
             self.tokenizer.save_pretrained(output_dir)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+
+        if self.model.aux_encoder is not None:
+            aux_encoder_fp = os.path.join(output_dir, "aux_encoder")
+            if self.args.save_safetensors:
+                save_file(
+                    self.model.aux_encoder.state_dict(),
+                    f"{aux_encoder_fp}.safetensors",
+                )
+            else:
+                torch.save(
+                    self.model.aux_encoder.state_dict(), 
+                    f"{aux_encoder_fp}.bin"
+                )
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         # override original trainer's method

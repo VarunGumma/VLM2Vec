@@ -87,11 +87,12 @@ class ModelArguments:
 
 @dataclass
 class AuxEncoderArguments:
-    model_dim: int = field(
-        default=128, metadata={"help": "the hidden dimension of the aux encoder"}
+    hidden_size: int = field(
+        default=256, metadata={"help": "the hidden size of the aux encoder"}
     )
-    intermediate_dim: int = field(
-        default=512, metadata={"help": "the intermediate dimension of the aux encoder"}
+    intermediate_size: int = field(
+        default=1024,
+        metadata={"help": "the intermediate size of the aux encoder FFN layer"},
     )
     num_layers: int = field(
         default=2, metadata={"help": "the number of layers of the aux encoder"}
@@ -108,6 +109,18 @@ class AuxEncoderArguments:
     )
     num_experts_per_tok: int = field(
         default=None, metadata={"help": "the number of experts per token"}
+    )
+    backbone_model_hidden_size: int = field(
+        default=2048,
+        metadata={
+            "help": "the hidden size of the backbone model to match when using parallel encoder"
+        },
+    )
+    parallel_encoder: bool = field(
+        default=False,
+        metadata={
+            "help": "whether to use parallel encoder architecture. By default, the aux encoder is added in series, on top of the backbone."
+        },
     )
 
 

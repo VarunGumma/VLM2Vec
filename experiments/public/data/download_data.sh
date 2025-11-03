@@ -7,7 +7,7 @@ set -ex
 ### Training data
 
 # 1. Change to desired directory for storing data
-DATA_BASEDIR=data/vlm2vec_train
+DATA_BASEDIR="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2/data/vlm2vec_train"
 mkdir -p "$DATA_BASEDIR"
 pushd "$DATA_BASEDIR"
 
@@ -18,7 +18,6 @@ python unzip_file.py
 popd
 
 # 2.2 Download LLaVA-Hound video data
-sudo apt-get install -y git-lfs
 git clone https://huggingface.co/datasets/ShareGPTVideo/train_video_and_instruction/ video
 pushd video/
 
@@ -38,7 +37,7 @@ popd
 
 ### Eval data
 
-DATA_BASEDIR=data/vlm2vec_eval
+DATA_BASEDIR="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2/data/vlm2vec_eval"
 mkdir -p "$DATA_BASEDIR"
 pushd "$DATA_BASEDIR"
 

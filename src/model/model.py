@@ -1,7 +1,10 @@
 from typing import Dict
 import torch
+import os
 import torch.distributed as dist
 from torch import nn, Tensor
+import torch.nn.functional as F
+from safetensors.torch import save_file
 from transformers import PreTrainedModel, AutoModelForCausalLM, AutoConfig
 from peft import LoraConfig, get_peft_model, PeftModel
 from src.model.processor import QWEN2_5_VL_TOKENSELECTION
@@ -19,7 +22,7 @@ from src.model.processor import (
     E5_V,
 )
 
-from src.model.biencoder_layer import TransformerEncoder
+from src.model.biencoder_layer import BiEncoder
 from src.model.moe import load_balancing_loss_func
 
 from src.arguments import ModelArguments
@@ -64,7 +67,6 @@ class MMEBModel(nn.Module):
         pooling: str = "last",
         normalize: bool = False,
         temperature: float = 0.02,
-        **kwargs,
     ):
         super().__init__()
         self.config = encoder.config
@@ -72,14 +74,14 @@ class MMEBModel(nn.Module):
         self.pooling = pooling
         self.normalize = normalize
         self.temperature = temperature
-        self.cross_entropy = nn.CrossEntropyLoss(reduction="mean")
         self.is_ddp = dist.is_initialized()
+        self.cross_entropy = nn.CrossEntropyLoss()
 
         if self.is_ddp:
             self.process_rank = dist.get_rank()
             self.world_size = dist.get_world_size()
 
-        self.moe_config = None
+        self.aux_encoder_config = None
         self.aux_encoder = None
 
     @property
@@ -110,7 +112,6 @@ class MMEBModel(nn.Module):
                 vfeat /= vfeat.norm(dim=-1, keepdim=True)
                 return vfeat
         elif getattr(self, "model_backbone", None) in [GME, LamRA, LamRA_QWEN2_5]:
-            # pooled_output = self.encoder(**input, return_dict=True, output_hidden_states=True)
             texts = [
                 text.replace(VLM_IMAGE_TOKENS[QWEN2_VL] + "\n", "")
                 for text in input["texts"]
@@ -143,17 +144,62 @@ class MMEBModel(nn.Module):
             )
             hidden_states = hidden_states.hidden_states[-1]
             pooled_output = self._pooling(hidden_states, input["attention_mask"])
-            return pooled_output
         else:
             hidden_states = self.encoder(
                 **input, return_dict=True, output_hidden_states=True
             )
-            hidden_states = hidden_states.hidden_states[-1]
+
+            if self.aux_encoder is not None:
+                if self.aux_encoder_config.parallel_encoder:
+                    x = hidden_states.hidden_states[0]
+                    decoder_outputs = hidden_states.hidden_states[1:]
+                else:
+                    x = hidden_states.hidden_states[-1]
+                    decoder_outputs = None
+
+                hidden_states = self._aux_forward(
+                    x, decoder_outputs, input["attention_mask"]
+                )
+
+                if isinstance(hidden_states, tuple):
+                    hidden_states, router_loss = hidden_states
+            else:
+                hidden_states = hidden_states.hidden_states[-1]
+
             pooled_output = self._pooling(hidden_states, input["attention_mask"])
-            return pooled_output
+            return (
+                (pooled_output, router_loss)
+                if self.aux_encoder is not None
+                else pooled_output
+            )
+
+    def _aux_forward(
+        self, x: Tensor, decoder_outputs: Tensor = None, attn_mask: Tensor = None
+    ):
+        if self.aux_encoder_config.use_moe:
+            x, router_logits = self.aux_encoder(
+                x, decoder_outputs=decoder_outputs, attn_mask=attn_mask
+            )
+            router_loss = load_balancing_loss_func(
+                router_logits,
+                attn_mask=attn_mask,
+                num_experts=self.aux_encoder_config.num_experts,
+                top_k=self.aux_encoder_config.num_experts_per_tok,
+            )
+            return x, router_loss
+        else:
+            return self.aux_encoder(
+                x, decoder_outputs=decoder_outputs, attn_mask=attn_mask
+            )
 
     def _pooling(self, last_hidden_state, attention_mask):
-        if self.pooling == "last" or self.pooling == "eos":
+        if self.pooling == "none":
+            reps = last_hidden_state
+        elif self.pooling == "mean":
+            attn_mask_sum = attention_mask.sum(dim=1, keepdim=True).clamp(min=1e-8)
+            attn_mask_exp = attention_mask.unsqueeze(-1).expand_as(last_hidden_state)
+            reps = (last_hidden_state * attn_mask_exp).sum(dim=1) / attn_mask_sum
+        elif self.pooling == "last" or self.pooling == "eos":
             left_padding = attention_mask[:, -1].sum() == attention_mask.shape[0]
             batch_size = last_hidden_state.shape[0]
             if left_padding:
@@ -169,8 +215,10 @@ class MMEBModel(nn.Module):
                 ]
         else:
             raise NotImplementedError
+
         if self.normalize:
-            reps = torch.nn.functional.normalize(reps, p=2, dim=-1)
+            reps = F.normalize(reps, p=2, dim=-1)
+
         return reps
 
     @classmethod
@@ -190,8 +238,7 @@ class MMEBModel(nn.Module):
             base_model = Phi3VForCausalLM.from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
+                dtype=torch.bfloat16,
             )
         elif model_backbone == LLAVA_NEXT:
             config.use_cache = False
@@ -199,8 +246,7 @@ class MMEBModel(nn.Module):
             base_model = LlavaNextForConditionalGeneration.from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
+                dtype=torch.bfloat16,
             )
         elif model_backbone in [QWEN2_VL, QWEN2_5_VL]:
             config._attn_implementation = "flash_attention_2"
@@ -209,8 +255,7 @@ class MMEBModel(nn.Module):
             base_model = backbone2model[model_backbone].from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
+                dtype=torch.bfloat16,
             )
         elif model_backbone in [QWEN2_VL_TOKENSELECTION, QWEN2_5_VL_TOKENSELECTION]:
             config._attn_implementation = "flash_attention_2"
@@ -227,8 +272,7 @@ class MMEBModel(nn.Module):
             base_model = backbone2model[model_backbone].from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
+                dtype=torch.bfloat16,
                 lm_skip_layer=lm_skip_layer,
                 vis_skip_layer=vis_skip_layer,
             )
@@ -239,7 +283,7 @@ class MMEBModel(nn.Module):
                 **kwargs,
                 config=config,
                 attn_implementation="flash_attention_2",
-                torch_dtype=torch.bfloat16,
+                dtype=torch.bfloat16,
                 trust_remote_code=True,
             )
 
@@ -269,30 +313,17 @@ class MMEBModel(nn.Module):
                 temperature=model_args.temperature,
             )
             if model_args.freeze_backbone:
-                for param in model.encoder.parameters():
-                    param.requires_grad = False
-                model.eval()
+                for p in model.encoder.parameters():
+                    p.requires_grad = False
 
         return model
 
     def build_aux_encoder(
         self,
-        in_dim: int,
         model_args: AuxEncoderArguments,
     ):
-        self.moe_config = {
-            "use_moe": model_args.use_moe,
-            "num_experts": model_args.num_experts,
-            "num_experts_per_tok": model_args.num_experts_per_tok,
-        }
-        self.aux_encoder = TransformerEncoder(
-            in_dim=in_dim,
-            dim=model_args.model_dim,
-            inter_dim=model_args.intermediate_dim,
-            n_heads=model_args.num_heads,
-            num_layers=model_args.num_layers,
-            **self.moe_config,
-        )
+        self.aux_encoder_config = model_args
+        self.aux_encoder = BiEncoder(model_args)
 
     @classmethod
     def load(cls, model_args: ModelArguments, is_trainable=True, **kwargs):
@@ -327,7 +358,6 @@ class MMEBModel(nn.Module):
             base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 model_args.model_name,
                 torch_dtype=torch.bfloat16,
-                low_cpu_mem_usage=True,
                 config=config,
             )
         elif model_args.model_backbone == PHI3V:
@@ -417,7 +447,12 @@ class MMEBModel(nn.Module):
         return model
 
     def save(self, output_dir: str):
-        self.encoder.save_pretrained(output_dir)
+        self.encoder.save_pretrained(output_dir, safe_serialization=True)
+        if self.aux_encoder is not None:
+            save_file(
+                self.aux_encoder.state_dict(), 
+                os.path.join(output_dir, "aux_encoder.safetensors")
+            )
 
     def forward(
         self,
@@ -426,39 +461,19 @@ class MMEBModel(nn.Module):
         *args,
         **kwargs,
     ):
-        # qry_reps = self.encode_input(qry) if qry else None  # (bsz_per_device, dim)
-        # tgt_reps = self.encode_input(tgt) if tgt else None  # (bsz_per_device, dim)
-
-        # initialize a loss and you can add to it
         loss = 0.0
 
         if qry is not None:
             qry_reps = self.encode_input(qry)
-            if self.aux_encoder is not None:
-                if self.moe_config["use_moe"]:
-                    qry_reps, qry_router_logits = self.aux_encoder(qry_reps)
-                    loss += load_balancing_loss_func(
-                        qry_router_logits,
-                        num_experts=self.moe_config["num_experts"],
-                        top_k=self.moe_config["num_experts_per_tok"],
-                        attn_maskp=qry["attention_mask"],
-                    )
-                else:
-                    qry_reps = self.aux_encoder(qry_reps)
+            if isinstance(qry_reps, tuple):
+                qry_reps, qry_router_loss = qry_reps
+                loss += qry_router_loss
 
         if tgt is not None:
             tgt_reps = self.encode_input(tgt)
-            if self.aux_encoder is not None:
-                if self.moe_config["use_moe"]:
-                    tgt_reps, tgt_router_logits = self.aux_encoder(tgt_reps)
-                    loss += load_balancing_loss_func(
-                        tgt_router_logits,
-                        num_experts=self.moe_config["num_experts"],
-                        top_k=self.moe_config["num_experts_per_tok"],
-                        attn_maskp=tgt["attention_mask"],
-                    )
-                else:
-                    tgt_reps = self.aux_encoder(tgt_reps)
+            if isinstance(tgt_reps, tuple):
+                tgt_reps, tgt_router_loss = tgt_reps
+                loss += tgt_router_loss
 
         if qry_reps is None or tgt_reps is None:
             return {"qry_reps": qry_reps, "tgt_reps": tgt_reps}
@@ -469,12 +484,6 @@ class MMEBModel(nn.Module):
         else:
             all_qry_reps = qry_reps
             all_tgt_reps = tgt_reps
-
-        # scores = self.compute_similarity(all_qry_reps, all_tgt_reps)
-        # scores = scores.view(all_qry_reps.size(0), -1)
-        # target = torch.arange(scores.size(0), device=scores.device, dtype=torch.long)
-        # target = target * (all_qry_reps.size(0) // all_tgt_reps.size(0))
-        # loss = self.cross_entropy(scores / self.temperature, target)
 
         loss += self._loss_fn(all_qry_reps, all_tgt_reps)
         qry_dim = qry_reps.shape[-1]

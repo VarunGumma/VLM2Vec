@@ -13,16 +13,6 @@ import torch.utils.checkpoint as checkpoint
 from functools import partial
 from einops import rearrange
 
-try:
-    from flash_attn.modules.mlp import FusedMLP
-except:
-    print(f"FusedMLP of flash_attn is not installed!!!")
-
-try:
-    from flash_attn.ops.rms_norm import DropoutAddRMSNorm
-except:
-    print(f"DropoutAddRMSNorm of flash_attn is not installed!!!")
-
 from flash_attn.flash_attn_interface import flash_attn_varlen_qkvpacked_func
 from flash_attn.bert_padding import unpad_input, pad_input
 
@@ -989,6 +979,17 @@ class PretrainInternVideo2(nn.Module):
             use_flash_attn == use_fused_rmsnorm == use_fused_mlp
         ), "use_flash_attn, use_fused_rmsnorm and use_fused_mlp should be consistent"
 
+        if use_flash_attn:
+            try:
+                from flash_attn.modules.mlp import FusedMLP
+            except:
+                print(f"FusedMLP of flash_attn is not installed!!!")
+
+            try:
+                from flash_attn.ops.rms_norm import DropoutAddRMSNorm
+            except:
+                print(f"DropoutAddRMSNorm of flash_attn is not installed!!!")
+
         self.use_flash_attn = use_flash_attn
         self.embed_dim = embed_dim
 
@@ -1392,11 +1393,11 @@ def pretrain_internvideo2_6b_patch14_224(config):
 from dataclasses import dataclass
 from typing import Tuple, Optional, List
 from transformers.configuration_utils import PretrainedConfig
-from transformers.modeling_utils import (
-    PreTrainedModel,
+from transformers.modeling_utils import PreTrainedModel
+from transformers.pytorch_utils import (
+    prune_linear_layer,
     apply_chunking_to_forward,
     find_pruneable_heads_and_indices,
-    prune_linear_layer,
 )
 from transformers.activations import ACT2FN
 from transformers.modeling_outputs import (

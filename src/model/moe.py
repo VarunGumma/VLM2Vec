@@ -1,14 +1,13 @@
-from transformers.activations import ACT2FN
+import torch
+from torch import nn
 from typing import Optional, Union
 import torch.nn.functional as F
-from torch import nn
-import torch
 
 
 def load_balancing_loss_func(
     gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
-    num_experts: Optional[int] = None,
-    top_k=2,
+    num_experts: int,
+    top_k: int,
     attention_mask: Optional[torch.Tensor] = None,
 ) -> Union[torch.Tensor, int]:
 
@@ -22,9 +21,7 @@ def load_balancing_loss_func(
         )
 
     routing_weights = F.softmax(concatenated_gate_logits, dim=-1)
-
     _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
-
     expert_mask = F.one_hot(selected_experts, num_experts)
 
     if attention_mask is None:
@@ -65,35 +62,27 @@ def load_balancing_loss_func(
 
 
 class MLP(nn.Module):
-    def __init__(
-        self, hidden_dim: int, intermediate_dim: int, activation: str = "gelu"
-    ):
+    def __init__(self, config):
         super().__init__()
-        self.act = ACT2FN[activation]
-        self.gate_up_proj = nn.Linear(hidden_dim, 2 * intermediate_dim, bias=False)
-        self.down_proj = nn.Linear(intermediate_dim, hidden_dim, bias=False)
+        self.W_g = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+        self.W_u = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
+        self.W_d = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
+        self.act = nn.SiLU()
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-        gate, up = self.gate_up_proj(hidden_states).chunk(2, dim=-1)
-        return self.down_proj(up * self.act(gate))
+    def forward(self, x):
+        return self.W_d(self.act(self.W_g(x) * self.W_u(x)))
 
 
 class Experts(nn.ModuleList):
-    """`
+    """
     ModuleList of experts.
     """
 
-    def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-        activation: str = "gelu",
-        num_experts: int = 16,
-    ):
+    def __init__(self, config):
         super().__init__()
 
-        for _ in range(num_experts):
-            self.append(MLP(hidden_size, intermediate_size, activation))
+        for _ in range(config.num_experts):
+            self.append(MLP(config))
 
     def forward(
         self,
@@ -130,24 +119,10 @@ class Experts(nn.ModuleList):
 
 
 class SparseMoE(nn.Module):
-    def __init__(
-        self,
-        hidden_size: int,
-        intermediate_size: int,
-        activation: str = "gelu",
-        num_experts: int = 16,
-        num_experts_per_tok: int = 2,
-    ):
+    def __init__(self, config):
         super().__init__()
-        self.num_experts = num_experts
-        self.top_k = num_experts_per_tok
-        self.gate = nn.Linear(hidden_size, self.num_experts, bias=False)
-        self.experts = Experts(
-            hidden_size,
-            intermediate_size,
-            activation,
-            num_experts,
-        )
+        self.experts = Experts(config)
+        self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
 
     def route_tokens_to_experts(self, hidden_states, router_logits):
         routing_weights = F.softmax(router_logits.float(), dim=-1)
