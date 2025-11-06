@@ -1,9 +1,6 @@
 import random
 
 from datasets import load_dataset
-from PIL import Image
-from datasets.features.image import image_to_bytes
-import io
 
 from src.data.dataset.base_pair_dataset import (
     AutoPairDataset,
@@ -22,7 +19,6 @@ DOCMATIX_DOC_PROMPT = "Represent the following PDF pages: "
 def data_prepare(batch_dict, *args, **kwargs):
     model_backbone = kwargs["model_backbone"]
     image_resolution = kwargs["image_resolution"]
-    batch_size = len(batch_dict["texts"])
     query_texts, query_images, pos_texts, pos_images, neg_texts, neg_images = (
         [],
         [],

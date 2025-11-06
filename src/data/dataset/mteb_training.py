@@ -15,7 +15,7 @@ from src.data.dataset.base_pair_dataset import AutoPairDataset, add_metainfo_hoo
 from src.prompt.base_prompt import AutoPrompt
 from src.text_utils.normalize_text import normalize
 from src.prompt.sfr import CLASSIFICATION_NAME2LABELS
-from src.text_utils.basic_utils import print_rank, print_master
+from src.text_utils.basic_utils import print_master
 
 SEP = "\t"
 

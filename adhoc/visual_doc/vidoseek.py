@@ -1,4 +1,3 @@
-from datasets import load_dataset
 import fitz  # PyMuPDF
 from PIL import Image
 import os

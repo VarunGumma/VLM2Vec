@@ -2,7 +2,7 @@
 # adopted from https://gist.github.com/davidgilbertson/2a6ac54ad6629a37e8f4d0539f7ef7bc
 import timeit
 import math
-from typing import Sequence, Mapping, Literal, Callable
+from typing import Sequence, Literal, Callable
 
 import torch
 import transformers

@@ -37,7 +37,6 @@ def data_prepare(batch_dict, *args, **kwargs):
     frame_basedir = kwargs["video_frame_basedir"]
     data_mode = kwargs.get("data_mode", "caption_retrieval")
     num_frames = kwargs["num_frames"]
-    batch_size = len(batch_dict["id"])
     query_texts, query_images, pos_texts, pos_images, neg_texts, neg_images = (
         [],
         [],
@@ -155,6 +154,7 @@ def load_llavahound_caption_dataset(
         batched=True,
         batch_size=128,
         drop_last_batch=True,
+        remove_columns=["video", "conversations", "id"],
     )
     dataset = dataset.cast(MULTIMODAL_FEATURES)
 

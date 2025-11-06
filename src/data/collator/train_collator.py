@@ -4,23 +4,21 @@ from torch.jit import isinstance
 
 import logging
 from dataclasses import dataclass
-from transformers import ProcessorMixin, AutoProcessor, AutoTokenizer
+from transformers import ProcessorMixin
 from src.arguments import DataArguments, ModelArguments, TrainingArguments
 import torch
 from qwen_vl_utils import smart_resize
 
 from src.model.processor import (
-    LLAVA_NEXT,
     QWEN2_VL,
     QWEN2_5_VL,
     QWEN2_VL_TOKENSELECTION,
     QWEN2_5_VL_TOKENSELECTION,
-    PHI3V,
     process_vlm_inputs_fns,
 )
 from PIL import Image
 import io
-from src.utils import print_rank, print_master
+from src.utils import print_rank
 
 
 logger = logging.getLogger(__name__)
@@ -123,7 +121,6 @@ class TrainTextImageDataCollator:
         """
         qry_inputs = self._get_batch_inputs(examples, "query_text", "query_image")
         pos_inputs = self._get_batch_inputs(examples, "pos_text", "pos_image")
-        neg_inputs = self._get_batch_inputs(examples, "neg_text", "neg_image")
         return qry_inputs, pos_inputs
 
     def _get_batch_inputs(self, examples, text_keyname, image_keyname):
@@ -133,7 +130,8 @@ class TrainTextImageDataCollator:
             # use dummy input for now
             if example is None or not example:
                 text, image = "  ", None
-            text, image = example[text_keyname], example[image_keyname]
+            else:
+                text, image = example[text_keyname], example[image_keyname]
             if type(text) == list:
                 if len(text) == 0 or len(image) == 0:
                     text, image = "  ", None
@@ -245,7 +243,6 @@ class MultimodalDataCollator:
         """
         qry_inputs = self._get_batch_inputs(examples, "query_text", "query_image")
         pos_inputs = self._get_batch_inputs(examples, "pos_text", "pos_image")
-        neg_inputs = self._get_batch_inputs(examples, "neg_text", "neg_image")
         bs = len(qry_inputs["text"])
         assert bs > 0, "An empty batch"
         # pad batch to batch_size to avoid hanging in distributed training
@@ -253,7 +250,6 @@ class MultimodalDataCollator:
             raise RuntimeError(
                 f"Expect batch size {self.batch_size}, but got batch size of {bs}"
             )
-            pass
         process_fn = process_vlm_inputs_fns[self.training_args.model_backbone]
         processed_qry_inputs = process_fn(
             qry_inputs, processor=self.processor, max_length=self.data_args.max_len

@@ -9,7 +9,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import tqdm
-from transformers import AutoModelForVision2Seq, AutoProcessor, AutoConfig
+from transformers import AutoConfig
 
 from src.model.vlm_backbone.qwen2_vl import Qwen2VLForConditionalGeneration
 from src.model.vlm_backbone.qwen2_vl import Qwen2VLProcessor
@@ -174,7 +174,6 @@ class LamRAQwen2VL(nn.Module):
         for t, img_path in zip(texts, images):
             if not is_query or instruction is None:
                 instruction = self.default_instruction
-            input_str = ""
             if img_path is None:
                 input_images = None  # All examples in the same batch are consistent
             else:

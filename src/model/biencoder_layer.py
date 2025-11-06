@@ -1,91 +1,100 @@
 import torch
 import torch.nn as nn
 from einops import rearrange
-import torch.nn.functional as F
 from .moe import MLP, SparseMoE
+import torch.nn.functional as F
 
 
-class MultiHeadAttention(nn.Module):
-    def __init__(
-        self, q_dim: int, k_dim: int = None, v_dim: int = None, n_heads: int = 8
-    ):
+class MultiheadAttention(nn.Module):
+    def __init__(self, q_dim, k_dim, v_dim, num_heads=8, attn_qk_norm=True, gated_attn=False):
         super().__init__()
-        self.n_heads = n_heads
-        k_dim = k_dim if k_dim is not None else q_dim
-        v_dim = v_dim if v_dim is not None else q_dim
-
+        assert q_dim % num_heads == 0, "q_dim must be divisible by num_heads"
+        self.num_heads = num_heads
+        self.head_dim = q_dim // num_heads
         self.W_q = nn.Linear(q_dim, q_dim, bias=False)
         self.W_k = nn.Linear(k_dim, q_dim, bias=False)
         self.W_v = nn.Linear(v_dim, q_dim, bias=False)
         self.W_o = nn.Linear(q_dim, q_dim, bias=False)
 
+        if attn_qk_norm:
+            self.q_norm = nn.RMSNorm(q_dim)
+            self.k_norm = nn.RMSNorm(q_dim)
+        else:
+            self.q_norm = None
+            self.k_norm = None
+
+        if gated_attn:
+            self.gate = nn.Linear(q_dim, q_dim)
+            self.sigmoid = nn.Sigmoid()
+        else:
+            self.gate = None
+            self.sigmoid = None
+
+    def _expand_mask(self, attn_mask):
+        S = attn_mask.shape[1]
+        return attn_mask[:, None, None, :].expand(-1, self.num_heads, S, -1)
+
+    def _rearrange(self, q, k, v):
+        q = rearrange(q, "b t (h d) -> b h t d", h=self.num_heads, d=self.head_dim)
+        k = rearrange(k, "b t (h d) -> b h t d", h=self.num_heads, d=self.head_dim)
+        v = rearrange(v, "b t (h d) -> b h t d", h=self.num_heads, d=self.head_dim)
+        return q, k, v
+
     def forward(self, x_q, x_k, x_v, attn_mask=None):
-        q = rearrange(self.W_q(x_q), "b s (h d) -> b h s d", h=self.n_heads)
-        k = rearrange(self.W_k(x_k), "b s (h d) -> b h s d", h=self.n_heads)
-        v = rearrange(self.W_v(x_v), "b s (h d) -> b h s d", h=self.n_heads)
+        q = self.W_q(x_q)
+        k = self.W_k(x_k)
+        v = self.W_v(x_v)
 
-        with torch.backends.cuda.sdpa_kernel(enable_flash=True):
-            x = F.scaled_dot_product_attention(
-                query=q,
-                key=k,
-                value=v,
-                dropout_p=0.0,
-                is_causal=False,
-                need_weights=False,
-                attn_mask=attn_mask,
-            )
+        if self.q_norm is not None and self.k_norm is not None:
+            q = self.q_norm(q)
+            k = self.k_norm(k)
 
-        x = rearrange(x, "b h s d -> b s (h d)", h=self.n_heads)
+        q, k, v = self._rearrange(q, k, v)
+
+        attn_mask_expanded = (
+            self._expand_mask((attn_mask == 0)) if attn_mask is not None else None
+        )
+
+        x = F.scaled_dot_product_attention(
+            query=q,
+            key=k,
+            value=v,
+            dropout_p=0.0,
+            is_causal=False,
+            attn_mask=attn_mask_expanded,
+        )
+
+        x = rearrange(x, "b h t d -> b t (h d)", h=self.num_heads, d=self.head_dim)
+
+        if self.gate is not None:
+            x = x * self.sigmoid(self.gate(x))
+
         return self.W_o(x)
 
 
-class GroupedQueryAttention(nn.Module):
-    def __init__(
-        self,
-        q_dim: int,
-        k_dim: int = None,
-        v_dim: int = None,
-        n_heads: int = 8,
-        n_kv_heads: int = 4,
-    ):
-        super().__init__()
-        self.n_heads = n_heads
-        self.kv_heads = n_kv_heads
-
+class GroupedQueryAttention(MultiheadAttention):
+    def __init__(self, q_dim, k_dim, v_dim, num_heads=8, num_kv_heads=4):
+        super().__init__(q_dim, k_dim, v_dim, num_heads)
         assert (
-            n_heads % n_kv_heads == 0
-        ), "Number of query heads must be divisible by number of key/value heads"
+            num_heads % num_kv_heads == 0
+        ), "num_heads must be divisible by num_kv_heads"
+        self.num_kv_heads = num_kv_heads
+        self.q_per_kv = num_heads // num_kv_heads
+        self.W_k = nn.Linear(k_dim, self.head_dim * num_kv_heads, bias=False)
+        self.W_v = nn.Linear(v_dim, self.head_dim * num_kv_heads, bias=False)
 
-        k_dim = k_dim if k_dim is not None else q_dim
-        v_dim = v_dim if v_dim is not None else q_dim
+        if self.k_norm is not None:
+            self.k_norm = nn.RMSNorm(self.head_dim * num_kv_heads)
 
-        self.W_q = nn.Linear(q_dim, q_dim, bias=False)
-        self.W_k = nn.Linear(k_dim, self.kv_heads * (q_dim // n_heads), bias=False)
-        self.W_v = nn.Linear(v_dim, self.kv_heads * (q_dim // n_heads), bias=False)
-        self.W_o = nn.Linear(q_dim, q_dim, bias=False)
-
-    def forward(self, x_q, x_k, x_v, attn_mask=None):
-        q = rearrange(self.W_q(x_q), "b s (h d) -> b h s d", h=self.n_heads)
+    def _rearrange(self, q, k, v):
+        q = rearrange(q, "b t (h d) -> b h t d", h=self.num_heads, d=self.head_dim)
         k = rearrange(
-            self.W_k(x_k), "b s (h d) -> b h s d", h=self.kv_heads
-        ).repeat_interleave(self.group_size, dim=1)
+            k, "b t (h d) -> b h t d", h=self.num_kv_heads, d=self.head_dim
+        ).repeat_interleave(self.q_per_kv, dim=1)
         v = rearrange(
-            self.W_v(x_v), "b s (h d) -> b h s d", h=self.kv_heads
-        ).repeat_interleave(self.group_size, dim=1)
-
-        with torch.backends.cuda.sdpa_kernel(enable_flash=True):
-            x = F.scaled_dot_product_attention(
-                query=q,
-                key=k,
-                value=v,
-                dropout_p=0.0,
-                is_causal=False,
-                need_weights=False,
-                attn_mask=attn_mask,
-            )
-
-        x = rearrange(x, "b h s d -> b s (h d)", h=self.n_heads)
-        return self.W_o(x)
+            v, "b t (h d) -> b h t d", h=self.num_kv_heads, d=self.head_dim
+        ).repeat_interleave(self.q_per_kv, dim=1)
+        return q, k, v
 
 
 class BiEncoderLayer(nn.Module):
@@ -108,42 +117,43 @@ class BiEncoderLayer(nn.Module):
         )
 
         self.attn = (
-            GroupedQueryAttention(
+            MultiheadAttention(
                 q_dim=config.hidden_size,
-                n_heads=config.num_heads,
-                group_size=config.group_size,
                 k_dim=k_dim,
                 v_dim=v_dim,
+                num_heads=config.num_attn_heads,
             )
-            if config.use_gqa
-            else MultiHeadAttention(
+            if not config.use_gqa
+            else GroupedQueryAttention(
                 q_dim=config.hidden_size,
-                n_heads=config.num_heads,
-                k_dim=(
-                    config.backbone_model_hidden_size
-                    if config.parallel_encoder
-                    else config.hidden_size
-                ),
-                v_dim=(
-                    config.backbone_model_hidden_size
-                    if config.parallel_encoder
-                    else config.hidden_size
-                ),
+                k_dim=k_dim,
+                v_dim=v_dim,
+                num_heads=config.num_attn_heads,
+                num_kv_heads=config.num_kv_attn_heads,
             )
         )
 
-    def _attn_forward(self, x_q, x_k, x_v, attn_mask=None):
-        return x_q + self.attn(
-            self.attn_norm(x_q), x_k=x_k, x_v=x_v, attn_mask=attn_mask
-        )
+    def _attn_forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
+        residual = x_q
+        x_q = self.attn_norm(x_q)
+
+        assert (x_k is None) == (
+            x_v is None
+        ), "x_k and x_v must be both None or both not None"
+
+        if x_k is None:
+            x_k = x_q
+
+        if x_v is None:
+            x_v = x_q
+
+        return residual + self.attn(x_q, x_k, x_v, attn_mask=attn_mask)
 
     def _mlp_forward(self, x):
         return x + self.mlp(self.mlp_norm(x))
 
-    def forward(self, x_q, x_k, x_v, attn_mask=None):
-        x = self._attn_forward(x_q, x_k=x_k, x_v=x_v, attn_mask=attn_mask)
-        x = self._mlp_forward(x)
-        return x
+    def forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
+        return self._mlp_forward(self._attn_forward(x_q, x_k, x_v, attn_mask=attn_mask))
 
 
 class BiEncoderLayerMoE(BiEncoderLayer):
@@ -163,31 +173,41 @@ class BiEncoder(nn.Module):
         super().__init__()
         self.config = config
 
-        self.W_in = (
-            nn.Linear(config.backbone_model_hidden_size, config.hidden_size, bias=False)
+        self.in_proj = (
+            nn.Sequential(
+                nn.RMSNorm(config.backbone_model_hidden_size),
+                nn.Linear(config.backbone_model_hidden_size, config.hidden_size, bias=False),
+            )
             if config.backbone_model_hidden_size != config.hidden_size
             else None
         )
-        self.W_out = (
-            nn.Linear(config.hidden_size, config.backbone_model_hidden_size, bias=False)
+        self.out_proj = (
+            nn.Sequential(
+                nn.RMSNorm(config.hidden_size),
+                nn.Linear(config.hidden_size, config.backbone_model_hidden_size, bias=False),
+            )
             if config.backbone_model_hidden_size != config.hidden_size
             else None
         )
+
+        moe_layers = eval(config.moe_layers)
 
         self.layers = nn.ModuleList(
             [
                 (
-                    BiEncoderLayer(config)
-                    if not config.use_moe
-                    else BiEncoderLayerMoE(config)
+                    BiEncoderLayerMoE(config)
+                    if (config.use_moe and (i+1) in moe_layers)
+                    else BiEncoderLayer(config)
                 )
-                for _ in range(config.num_layers)
+                for i in range(config.num_layers)
             ]
         )
 
     def forward(self, x, decoder_outputs=None, attn_mask=None):
-        if self.W_in is not None:
-            x = self.W_in(x)
+        residual = x
+
+        if self.in_proj is not None:
+            x = self.in_proj(x)
 
         if self.config.parallel_encoder:
             assert (
@@ -196,19 +216,26 @@ class BiEncoder(nn.Module):
             assert len(decoder_outputs) == len(
                 self.layers
             ), "number of decoder outputs must match number of layers"
+        else:
+            assert (
+                decoder_outputs is None
+            ), "decoder_outputs should not be provided for non-parallel encoder"
+            decoder_outputs = [None] * len(self.layers)
 
-        if self.config.use_moe:
-            router_logits = []
-            for layer, d_out in zip(self.layers, decoder_outputs):
-                x_kv = d_out if self.config.parallel_encoder else x
+        router_logits = []
+
+        for layer, d_out in zip(self.layers, decoder_outputs):
+            x_kv = d_out if self.config.parallel_encoder else x
+            if isinstance(layer, BiEncoderLayerMoE):
                 x, rl = layer(x, x_kv, x_kv, attn_mask=attn_mask)
                 router_logits.append(rl)
-        else:
-            for layer, d_out in zip(self.layers, decoder_outputs):
-                x_kv = d_out if self.config.parallel_encoder else x
+            else:
                 x = layer(x, x_kv, x_kv, attn_mask=attn_mask)
 
-        if self.W_out is not None:
-            x = self.W_out(x)
+        if self.out_proj is not None:
+            x = self.out_proj(x)
 
-        return (x, router_logits) if self.config.use_moe else x
+        if not self.config.parallel_encoder and self.config.skip_connection:
+            x = x + residual
+
+        return (x, router_logits) if len(router_logits) > 0 else x

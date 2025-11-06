@@ -1,5 +1,3 @@
-import sys
-
 import datasets
 from datasets import load_dataset
 from src.utils import print_rank

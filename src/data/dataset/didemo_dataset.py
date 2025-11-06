@@ -1,5 +1,4 @@
 import os
-import sys
 
 from datasets import load_dataset
 from src.data.dataset.base_pair_dataset import (
@@ -73,7 +72,7 @@ def data_prepare(batch_dict, *args, **kwargs):
                 frame_dir=frame_dir,
                 max_frames_saved=max_frames_saved,
             )
-        except Exception as e:
+        except Exception:
             query_texts[-1] = None
             pos_texts.append(None)
             pos_images.append(None)

@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Optional
 import torch
 import os
 import torch.distributed as dist
@@ -17,6 +17,7 @@ from src.model.processor import (
     print_master,
     QWEN2_5_VL,
     backbone2model,
+    QWEN3_VL,
     QWEN2_VL_TOKENSELECTION,
     QWEN2_5_VL_TOKENSELECTION,
     E5_V,
@@ -29,6 +30,7 @@ from src.arguments import ModelArguments
 from src.model.processor import (
     LLAVA_NEXT,
     QWEN2_VL,
+    QWEN3_VL,
     PHI3V,
     get_backbone_name,
     print_master,
@@ -169,7 +171,7 @@ class MMEBModel(nn.Module):
             pooled_output = self._pooling(hidden_states, input["attention_mask"])
             return (
                 (pooled_output, router_loss)
-                if self.aux_encoder is not None
+                if (self.aux_encoder is not None and self.aux_encoder_config.use_moe)
                 else pooled_output
             )
 
@@ -248,7 +250,7 @@ class MMEBModel(nn.Module):
                 config=config,
                 dtype=torch.bfloat16,
             )
-        elif model_backbone in [QWEN2_VL, QWEN2_5_VL]:
+        elif model_backbone in [QWEN2_VL, QWEN2_5_VL, QWEN3_VL]:
             config._attn_implementation = "flash_attention_2"
             config.padding_side = "left"
             config.use_cache = False
@@ -294,9 +296,10 @@ class MMEBModel(nn.Module):
                 lora_alpha=model_args.lora_alpha,
                 target_modules=model_args.lora_target_modules.split(","),
                 lora_dropout=model_args.lora_dropout,
-                init_lora_weights="gaussian",
                 use_dora=True,
                 inference_mode=False,
+                init_lora_weights="gaussian",
+                task_type="FEATURE_EXTRACTION",
             )
             lora_model = get_peft_model(base_model, lora_config)
             model = cls(
@@ -317,6 +320,18 @@ class MMEBModel(nn.Module):
                     p.requires_grad = False
 
         return model
+
+    def gradient_checkpointing_enable(
+        self, gradient_checkpointing_kwargs: Optional[dict] = None
+    ):
+        if not hasattr(self.encoder, "gradient_checkpointing_enable"):
+            raise NotImplementedError(
+                "The underlying backbone encoder does not support gradient checkpointing."
+            )
+
+        self.encoder.gradient_checkpointing_enable(
+            gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
+        )
 
     def build_aux_encoder(
         self,
@@ -339,12 +354,14 @@ class MMEBModel(nn.Module):
                 hf_config=config, model_type=model_args.model_type
             )
             setattr(model_args, "model_backbone", model_backbone)
+
         print_master(
             f"Loading backbone [{model_args.model_backbone}] from {model_name_or_path}"
         )
         if model_args.model_backbone in {
             LLAVA_NEXT,
             QWEN2_VL,
+            QWEN3_VL,
             QWEN2_5_VL,
             QWEN2_VL_TOKENSELECTION,
             QWEN2_5_VL_TOKENSELECTION,
@@ -450,8 +467,8 @@ class MMEBModel(nn.Module):
         self.encoder.save_pretrained(output_dir, safe_serialization=True)
         if self.aux_encoder is not None:
             save_file(
-                self.aux_encoder.state_dict(), 
-                os.path.join(output_dir, "aux_encoder.safetensors")
+                self.aux_encoder.state_dict(),
+                os.path.join(output_dir, "aux_encoder.safetensors"),
             )
 
     def forward(
@@ -468,12 +485,16 @@ class MMEBModel(nn.Module):
             if isinstance(qry_reps, tuple):
                 qry_reps, qry_router_loss = qry_reps
                 loss += qry_router_loss
+        else:
+            qry_reps = None
 
         if tgt is not None:
             tgt_reps = self.encode_input(tgt)
             if isinstance(tgt_reps, tuple):
                 tgt_reps, tgt_router_loss = tgt_reps
                 loss += tgt_router_loss
+        else:
+            tgt_reps = None
 
         if qry_reps is None or tgt_reps is None:
             return {"qry_reps": qry_reps, "tgt_reps": tgt_reps}

@@ -13,7 +13,6 @@ from ..utils.vision_utils import (
     temporal_random_crop,
 )
 
-import random
 
 IMG_FPS = 120
 

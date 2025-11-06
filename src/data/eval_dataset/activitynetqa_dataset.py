@@ -1,7 +1,6 @@
 import json
 import os
 import shutil
-import sys
 
 from datasets import load_dataset
 
@@ -12,10 +11,8 @@ from src.data.eval_dataset.base_eval_dataset import (
 )
 from src.data.utils.dataset_utils import load_hf_dataset, sample_dataset
 from src.data.utils.vision_utils import (
-    temporal_random_crop,
     process_video_frames,
     load_frames,
-    qa_template,
 )
 from src.model.processor import VLM_VIDEO_TOKENS
 import random
@@ -48,7 +45,6 @@ def data_prepare(batch_dict, *args, **kwargs):
         [],
         [],
     )
-    batch_size = len(batch_dict["question"]) if batch_dict["question"] else 0
     for video_name, query, answer, question_id in zip(
         batch_dict["video_name"],
         batch_dict["question"],
@@ -134,7 +130,6 @@ def sub_sample(video_dir, video_export_dir):
                 continue
             yesno_mp4_count += 1
             row_idx.append(row_id)
-        pass
     print(f"yesno_count={yesno_count}")
     print(f"yesno_mp4_count={yesno_mp4_count}")
     yesno_dataset = dataset.select(row_idx)

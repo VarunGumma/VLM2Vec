@@ -1,5 +1,5 @@
 from src.arguments import ModelArguments
-from transformers import HfArgumentParser, AutoProcessor
+from transformers import HfArgumentParser
 
 from src.model.model import MMEBModel
 from src.model.processor import get_backbone_name, load_processor

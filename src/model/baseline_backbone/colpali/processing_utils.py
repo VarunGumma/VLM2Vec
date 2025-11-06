@@ -140,4 +140,3 @@ class BaseVisualRetrieverProcessor(ABC, ProcessorMixin):
         Get the number of patches (n_patches_x, n_patches_y) that will be used to process an
         image of size (height, width) with the given patch size.
         """
-        pass

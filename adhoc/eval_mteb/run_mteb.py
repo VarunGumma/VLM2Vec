@@ -9,7 +9,7 @@ import os
 from functools import partial
 from torch.utils.data import DataLoader
 from datasets import Dataset
-from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding
+from transformers import DataCollatorWithPadding
 from mteb import MTEB
 
 from adhoc.eval_mteb.e5mistral_prompt import load_e5mistral_prompt
@@ -19,17 +19,15 @@ from src.arguments import (
     TrainingArguments,
     MTEBArguments,
 )
-from transformers import HfArgumentParser, AutoTokenizer
+from transformers import HfArgumentParser
 
 from src.model.model import MMEBModel
 from adhoc.eval_mteb.mteb_utils import (
     logger,
-    pool,
     move_to_cuda,
     input_transform_func,
     varsize_gather_nograd,
     is_main,
-    str2bool,
 )
 from src.model.processor import load_processor
 

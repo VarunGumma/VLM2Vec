@@ -50,7 +50,6 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from .configuration_qwen2_vl import Qwen2VLConfig, Qwen2VLVisionConfig
-from ...utils import get_select_mask
 
 if is_flash_attn_2_available():
     from flash_attn import flash_attn_varlen_func
@@ -58,7 +57,6 @@ if is_flash_attn_2_available():
     from transformers.modeling_flash_attention_utils import _flash_attention_forward
 else:
     flash_attn_varlen_func = None
-from src.utils import print_rank
 
 logger = logging.get_logger(__name__)
 
@@ -569,10 +567,8 @@ class Qwen2VLVisionBlock(nn.Module):
             curr_comp_idx = 0
 
             for idx, (patches_count, comps_count) in enumerate(grid_dims):
-                grid_h = grid_thw[idx][1].item()
                 grid_w = grid_thw[idx][2].item()
 
-                comp_h = grid_h // self.spatial_merge_size
                 comp_w = grid_w // self.spatial_merge_size
 
                 # Get the component mask for this batch item
@@ -1286,9 +1282,6 @@ class Qwen2VLDecoderLayer(nn.Module):
                 Arbitrary kwargs to be ignored, used for FSDP and other methods that injects code
                 into the model
         """
-
-        dtype = hidden_states.dtype
-        device = hidden_states.device
 
         if patch_pos[0] is not None:
             assert hidden_states.size(0) == 1, "Only support batch size 1 for now"

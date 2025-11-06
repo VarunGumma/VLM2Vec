@@ -1,10 +1,9 @@
-import json
 import sys
 
 import numpy as np
 
 from src.arguments import ModelArguments, DataArguments, TrainingArguments
-from transformers import HfArgumentParser, AutoProcessor
+from transformers import HfArgumentParser
 from src.dataset import EvalDataset
 import re
 
@@ -56,11 +55,9 @@ def main():
             tokens = re.split("[^a-zA-Z]", tgt[0])
             tgttokens.append(tokens)
             tgtstr_lens.append(len(tokens))
-            pass
 
         print(f"dataset: {subset}")
         print(f"tgt-avg-len: {np.mean(tgtstr_lens)}")
-        pass
 
 
 if __name__ == "__main__":

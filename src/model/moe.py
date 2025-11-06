@@ -2,13 +2,14 @@ import torch
 from torch import nn
 from typing import Optional, Union
 import torch.nn.functional as F
+from transformers.activations import ACT2FN
 
 
 def load_balancing_loss_func(
     gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
     num_experts: int,
     top_k: int,
-    attention_mask: Optional[torch.Tensor] = None,
+    attn_mask: Optional[torch.Tensor] = None,
 ) -> Union[torch.Tensor, int]:
 
     if gate_logits is None or not isinstance(gate_logits, tuple):
@@ -24,17 +25,17 @@ def load_balancing_loss_func(
     _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
     expert_mask = F.one_hot(selected_experts, num_experts)
 
-    if attention_mask is None:
+    if attn_mask is None:
         tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
         router_prob_per_expert = torch.mean(routing_weights, dim=0)
     else:
-        batch_size, sequence_length = attention_mask.shape
+        batch_size, sequence_length = attn_mask.shape
         num_hidden_layers = concatenated_gate_logits.shape[0] // (
             batch_size * sequence_length
         )
 
-        expert_attention_mask = (
-            attention_mask[None, :, :, None, None]
+        expert_attn_mask = (
+            attn_mask[None, :, :, None, None]
             .expand(
                 (num_hidden_layers, batch_size, sequence_length, top_k, num_experts)
             )
@@ -43,19 +44,19 @@ def load_balancing_loss_func(
         )
 
         tokens_per_expert = torch.sum(
-            expert_mask.float() * expert_attention_mask, dim=0
-        ) / torch.sum(expert_attention_mask, dim=0)
+            expert_mask.float() * expert_attn_mask, dim=0
+        ) / torch.sum(expert_attn_mask, dim=0)
 
-        router_per_expert_attention_mask = (
-            attention_mask[None, :, :, None]
+        router_per_expert_attn_mask = (
+            attn_mask[None, :, :, None]
             .expand((num_hidden_layers, batch_size, sequence_length, num_experts))
             .reshape(-1, num_experts)
             .to(compute_device)
         )
 
         router_prob_per_expert = torch.sum(
-            routing_weights * router_per_expert_attention_mask, dim=0
-        ) / torch.sum(router_per_expert_attention_mask, dim=0)
+            routing_weights * router_per_expert_attn_mask, dim=0
+        ) / torch.sum(router_per_expert_attn_mask, dim=0)
 
     overall_loss = torch.sum(tokens_per_expert * router_prob_per_expert.unsqueeze(0))
     return overall_loss * num_experts
@@ -67,7 +68,7 @@ class MLP(nn.Module):
         self.W_g = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
         self.W_u = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
         self.W_d = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
-        self.act = nn.SiLU()
+        self.act = ACT2FN[config.hidden_act]
 
     def forward(self, x):
         return self.W_d(self.act(self.W_g(x) * self.W_u(x)))
@@ -80,6 +81,8 @@ class Experts(nn.ModuleList):
 
     def __init__(self, config):
         super().__init__()
+
+        self.num_experts = config.num_experts
 
         for _ in range(config.num_experts):
             self.append(MLP(config))
@@ -122,11 +125,12 @@ class SparseMoE(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.experts = Experts(config)
+        self.num_experts_per_tok = config.num_experts_per_tok
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
 
     def route_tokens_to_experts(self, hidden_states, router_logits):
         routing_weights = F.softmax(router_logits.float(), dim=-1)
-        top_k_weights, top_k_index = torch.topk(routing_weights, self.top_k, dim=-1)
+        top_k_weights, top_k_index = torch.topk(routing_weights, self.num_experts_per_tok, dim=-1)
         top_k_weights /= top_k_weights.sum(dim=-1, keepdim=True)
         top_k_weights = top_k_weights.to(hidden_states.dtype)
         return top_k_index, top_k_weights

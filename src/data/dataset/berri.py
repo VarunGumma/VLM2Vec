@@ -35,7 +35,6 @@ def data_prepare(
             example = json.loads(text)
             q = example["question"]
             q_prompt, q = q.split("[SEP]")
-            ans = example["answers"]
             pos_list = example["positive_ctxs"]
             neg_cands = example["hard_negative_ctxs"]
             randomneg_list = example["negative_ctxs"]

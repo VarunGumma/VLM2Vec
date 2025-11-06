@@ -77,7 +77,7 @@ class ModelArguments:
             "help": "Specify the layers of the vision model to skip for token selection"
         },
     )
-    freeze_backbone: bool = field(
+    freeze_backbone_model: bool = field(
         default=False, metadata={"help": "whether to freeze the backbone model"}
     )
     add_aux_encoder: bool = field(
@@ -94,15 +94,42 @@ class AuxEncoderArguments:
         default=1024,
         metadata={"help": "the intermediate size of the aux encoder FFN layer"},
     )
-    num_layers: int = field(
-        default=2, metadata={"help": "the number of layers of the aux encoder"}
+    hidden_act: str = field(
+        default="silu", metadata={"help": "the activation function of the aux encoder"}
     )
-    num_heads: int = field(
-        default=4, metadata={"help": "the number of attention heads of the aux encoder"}
+    num_layers: int = field(
+        default=6, metadata={"help": "the number of layers of the aux encoder"}
+    )
+    num_attn_heads: int = field(
+        default=8, metadata={"help": "the number of attention heads of the aux encoder"}
+    )
+    attn_qk_norm: bool = field(
+        default=True,
+        metadata={"help": "whether to use query-key normalization in the aux encoder"},
+    )
+    gated_attn: bool = field(
+        default=False,
+        metadata={"help": "whether to use gated attention mechanism in the aux encoder"},
+    )
+    use_gqa: bool = field(
+        default=False,
+        metadata={"help": "whether to use GQA attention mechanism in the aux encoder"},
+    )
+    num_kv_attn_heads: int = field(
+        default=None,
+        metadata={
+            "help": "the number of key-value attention heads for GQA attention mechanism in the aux encoder"
+        },
     )
     use_moe: bool = field(
         default=False,
         metadata={"help": "whether to use Mixture of Experts in the aux encoder"},
+    )
+    moe_layers: str = field(
+        default="[]",
+        metadata={
+            "help": "the layer indices to apply Mixture of Experts in the aux encoder"
+        },
     )
     num_experts: int = field(
         default=None, metadata={"help": "the number of experts in the mixture"}
@@ -120,6 +147,12 @@ class AuxEncoderArguments:
         default=False,
         metadata={
             "help": "whether to use parallel encoder architecture. By default, the aux encoder is added in series, on top of the backbone."
+        },
+    )
+    skip_connection: bool = field(
+        default=True,
+        metadata={
+            "help": "whether to use skip connection in the series aux encoder architecture"
         },
     )
 

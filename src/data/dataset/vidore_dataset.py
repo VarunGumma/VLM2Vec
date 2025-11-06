@@ -1,7 +1,6 @@
 from datasets import load_dataset
 from PIL import Image
 from datasets.features.image import image_to_bytes
-import io
 
 from torch.jit import isinstance
 from src.data.dataset.base_pair_dataset import (
@@ -25,7 +24,6 @@ def process_query(query, prompt, image_token):
 def data_prepare(batch_dict, *args, **kwargs):
     model_backbone = kwargs["model_backbone"]
     image_resolution = kwargs["image_resolution"]
-    batch_size = len(batch_dict["query"])
     query_texts, query_images, pos_texts, pos_images, neg_texts, neg_images = (
         [],
         [],

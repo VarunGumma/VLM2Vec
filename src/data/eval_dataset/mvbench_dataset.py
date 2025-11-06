@@ -1,8 +1,5 @@
 import shutil
-import sys
 
-import datasets
-from datasets import load_dataset
 import imageio
 
 from src.data.dataset_hf_path import EVAL_DATASET_HF_PATH
@@ -19,7 +16,6 @@ import numpy as np
 from decord import VideoReader, cpu
 import cv2
 from decord import VideoReader, cpu
-from torchvision.transforms.functional import InterpolationMode
 
 
 def process_query(query, prompt, video_token=""):
@@ -200,7 +196,6 @@ TASK_PROMPT = "Given a video and a question, select the most accurate answer fro
 @add_metainfo_hook
 def data_prepare(batch_dict, *args, **kwargs):
     model_backbone = kwargs["model_backbone"]
-    image_resolution = kwargs["image_resolution"]
     max_frames_saved = kwargs["max_frames_saved"]
     video_root = kwargs["video_root"]
     frame_root = kwargs["frame_root"]
@@ -212,7 +207,6 @@ def data_prepare(batch_dict, *args, **kwargs):
         [],
         [],
     )
-    batch_size = len(batch_dict["question"]) if batch_dict["question"] else 0
     for row_idx, (subset, query, video_filename, cands, answer) in enumerate(
         zip(
             batch_dict["subset"],

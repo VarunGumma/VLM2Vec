@@ -1,5 +1,4 @@
 import os
-import sys
 
 from datasets import load_dataset
 from src.data.dataset.base_pair_dataset import (
@@ -9,7 +8,6 @@ from src.data.dataset.base_pair_dataset import (
     MULTIMODAL_FEATURES,
 )
 from src.data.eval_dataset.video_classification_utils import (
-    VIDEOCLS_LABEL_MAPPING,
     DATASET_INSTRUCTION,
 )
 from src.data.utils.vision_utils import save_frames, load_frames, sample_frames

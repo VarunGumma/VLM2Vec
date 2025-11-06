@@ -6,16 +6,14 @@ import torch
 from qwen_vl_utils import smart_resize
 from PIL import Image
 from src.model.processor import (
-    LLAVA_NEXT,
     QWEN2_VL,
     QWEN2_5_VL,
-    PHI3V,
     QWEN2_VL_TOKENSELECTION,
     QWEN2_5_VL_TOKENSELECTION,
     process_vlm_inputs_fns,
 )
 
-from src.utils import print_rank, print_master
+from src.utils import print_rank
 import io
 
 logger = logging.getLogger(__name__)
@@ -242,7 +240,6 @@ class MultimodalEvalDataCollator:
                     for text, visual_input in zip(ex_text, ex_images):
                         texts.append(text)
                         visual_inputs.append(visual_input)
-                        pass
 
         inputs = {"text": texts, "images": visual_inputs}
         return inputs

@@ -1,15 +1,12 @@
-import collections
 import contextlib
 import functools
 import shutil
 import sys
 import time
-from datetime import timedelta
 from safetensors.torch import save_file
 
 from packaging import version
-from accelerate import skip_first_batches, DistributedType, InitProcessGroupKwargs
-from transformers import PretrainedConfig
+from accelerate import skip_first_batches, DistributedType
 from transformers.trainer import Trainer, TRAINING_ARGS_NAME, TRAINER_STATE_NAME
 import torch.distributed as dist
 from typing import Optional
@@ -18,7 +15,6 @@ import torch
 import math
 
 from src.data.collator.train_collator import (
-    split_vlm_inputs,
     get_dense_rep,
     split_and_process_vlm_inputs,
 )
@@ -27,13 +23,10 @@ from src.loss import SimpleContrastiveLoss, DistributedContrastiveLoss
 from src.grad_cache.grad_cache import GradCache
 from torch.utils.data import (
     DataLoader,
-    Dataset,
-    IterableDataset,
     RandomSampler,
-    SequentialSampler,
 )
 
-from transformers.training_args import OptimizerNames, ParallelMode, TrainingArguments
+from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.trainer_callback import (
     ExportableState,
     TrainerState,
@@ -49,7 +42,6 @@ from transformers.trainer_pt_utils import (
     get_model_param_count,
 )
 
-from transformers.trainer import FSDP_MODEL_NAME
 from transformers.utils import (
     XLA_FSDPV2_MIN_VERSION,
     is_accelerate_available,
@@ -57,15 +49,10 @@ from transformers.utils import (
     is_torch_xla_available,
     logging,
     is_sagemaker_mp_enabled,
-    CONFIG_NAME,
-    WEIGHTS_NAME,
-    SAFE_WEIGHTS_NAME,
-    ADAPTER_WEIGHTS_NAME,
-    ADAPTER_SAFE_WEIGHTS_NAME,
 )
 
 from src.utils import batch_to_device
-from src.utils import print_master, print_rank
+from src.utils import print_master
 
 if is_apex_available():
     from apex import amp
@@ -149,10 +136,7 @@ class MMEBTrainer(Trainer):
                     f"{aux_encoder_fp}.safetensors",
                 )
             else:
-                torch.save(
-                    self.model.aux_encoder.state_dict(), 
-                    f"{aux_encoder_fp}.bin"
-                )
+                torch.save(self.model.aux_encoder.state_dict(), f"{aux_encoder_fp}.bin")
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         # override original trainer's method
@@ -540,7 +524,6 @@ class MMEBTrainer(Trainer):
                     step += 1
                     total_batched_samples += 1
 
-                    dataset_stat = collections.Counter(inputs[0]["global_dataset_name"])
                     # print_rank(f"dataset name: {str(set(inputs[0]['global_dataset_name']))}")
                     # for dname, count in sorted(dataset_stat.items(), key=lambda t:t[1], reverse=True):
                     #     print_rank(f"\t\tdataset_name={dname}, count={count}")
@@ -563,11 +546,12 @@ class MMEBTrainer(Trainer):
                             self.model, "main_input_name", "input_ids"
                         )
                         if main_input_name not in inputs:
-                            logger.warning(
-                                "Tried to track the number of tokens seen, however the current model is "
-                                "not configured properly to know what item is the input. To fix this, add "
-                                "a `main_input_name` attribute to the model class you are using."
-                            )
+                            # logger.warning(
+                            #     "Tried to track the number of tokens seen, however the current model is "
+                            #     "not configured properly to know what item is the input. To fix this, add "
+                            #     "a `main_input_name` attribute to the model class you are using."
+                            # )
+                            pass
                         else:
                             input_tokens = inputs[main_input_name].numel()
                             input_tokens = torch.tensor(

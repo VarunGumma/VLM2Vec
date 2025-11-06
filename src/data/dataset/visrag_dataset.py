@@ -49,7 +49,6 @@ target_source2prompt = {
 def data_prepare(batch_dict, *args, **kwargs):
     model_backbone = kwargs["model_backbone"]
     image_resolution = kwargs["image_resolution"]
-    batch_size = len(batch_dict["query"])
     query_texts, query_images, pos_texts, pos_images, neg_texts, neg_images = (
         [],
         [],
@@ -147,8 +146,8 @@ def load_visreg_dataset(model_args, data_args, training_args, *args, **kwargs):
         lambda x: data_prepare(x, **kwargs),
         batched=True,
         batch_size=128,
-        remove_columns=["image"],
-        # remove_columns=['query', 'image', 'source'],
+        # remove_columns=["image"],
+        remove_columns=["query", "image", "source"],
         drop_last_batch=True,
     )
     dataset = dataset.cast(MULTIMODAL_FEATURES)

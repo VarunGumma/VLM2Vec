@@ -29,8 +29,6 @@ from src.eval_utils.metrics import RankingMetrics
 from src.model.model import MMEBModel
 from src.model.processor import get_backbone_name, load_processor, COLPALI
 from src.utils import batch_to_device, print_rank, print_master
-import multiprocessing
-from multiprocessing import Pool, cpu_count
 
 logging.basicConfig(
     level=logging.INFO,
@@ -374,7 +372,7 @@ def main():
                     formatted = {k: f"{v:.4f}" for k, v in score_dict.items()}
                     print_master(formatted)
                     continue
-                except Exception as e:
+                except Exception:
                     print_master(
                         f"Failed to load score for {dataset_name}, skipping {dataset_name}"
                     )

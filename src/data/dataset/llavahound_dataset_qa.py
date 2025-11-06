@@ -28,7 +28,6 @@ def data_prepare(batch_dict, *args, **kwargs):
     image_resolution = kwargs["image_resolution"]
     frame_basedir = kwargs["video_frame_basedir"]
     num_frames = kwargs["num_frames"]
-    batch_size = len(batch_dict["id"])
     query_texts, query_images, pos_texts, pos_images, neg_texts, neg_images = (
         [],
         [],
@@ -124,6 +123,7 @@ def load_llavahound_qa_dataset(model_args, data_args, training_args, *args, **kw
         batched=True,
         batch_size=128,
         drop_last_batch=True,
+        remove_columns=["video", "conversations", "id"],
     )
     dataset = dataset.cast(MULTIMODAL_FEATURES)
 

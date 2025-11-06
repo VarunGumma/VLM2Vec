@@ -9,7 +9,7 @@ import torch
 from PIL import Image
 from torch.utils.data import DataLoader
 from tqdm.autonotebook import tqdm
-from transformers import AutoModelForVision2Seq, AutoProcessor, AutoConfig
+from transformers import AutoProcessor, AutoConfig
 
 from src.model.vlm_backbone.qwen2_vl import Qwen2VLForConditionalGeneration
 
@@ -48,8 +48,6 @@ class GmeQwen2VL(nn.Module):
         self.device = device
         self.base = self.base.to(self.device)
         print(f"model.device: {str(self.base.device)}")
-        min_pixels = min_image_tokens * 28 * 28
-        max_pixels = max_image_tokens * 28 * 28
         self.max_length = max_length
         self.processor = processor
         self.processor.tokenizer.padding_side = "left"

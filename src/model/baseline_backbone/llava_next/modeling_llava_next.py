@@ -602,7 +602,6 @@ class LlavaNextForConditionalGeneration(LlavaNextPreTrainedModel, GenerationMixi
             num_special_image_tokens = torch.sum(special_image_token_mask, dim=-1)
             # num_special_image_tokens: [bsz]
             # Reserve for padding of num_images
-            total_num_special_image_tokens = torch.sum(special_image_token_mask)
 
             # we have dummy images, so skip this assert
             # if total_num_special_image_tokens != num_images:

@@ -1,7 +1,7 @@
 import requests
 from PIL import Image
 import torch
-from transformers import Qwen2VLForConditionalGeneration, AutoModel, AutoProcessor
+from transformers import Qwen2VLForConditionalGeneration, AutoProcessor
 
 
 model_path = "Qwen/Qwen2-VL-7B-Instruct"

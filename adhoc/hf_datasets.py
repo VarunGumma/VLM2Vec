@@ -17,7 +17,6 @@ def official_example():
     # dataset = load_dataset("ethz/food101", streaming=True)
     for batch in dataset:
         print(batch)
-        pass
 
 
 def add_prefix(example):
@@ -40,7 +39,6 @@ def load_mmeb():
     # dataset = dataset._resolve_features()
     for batch in dataset:
         print(batch)
-        pass
 
 
 if __name__ == "__main__":

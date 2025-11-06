@@ -11,9 +11,7 @@ from src.data.eval_dataset.base_eval_dataset import (
 )
 from src.data.eval_dataset.base_eval_dataset import ImageVideoInstance
 from src.data.utils.vision_utils import (
-    sample_frames,
     load_frames,
-    VID_EXTENSIONS,
     save_frames,
 )
 from src.model.processor import process_input_text
@@ -30,7 +28,6 @@ TASK_INST_TGT = "Understand the content of the provided video clip."
 def data_prepare(batch_dict, *args, **kwargs):
     image_resolution = kwargs["image_resolution"]
     ## metadata
-    num_negative_clips = kwargs["num_negative_clips"]
     num_video_frames = kwargs["num_video_frames"]
     model_backbone = kwargs["model_backbone"]
     video_root, clip_root, frame_root = (

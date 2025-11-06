@@ -18,13 +18,11 @@ from copy import deepcopy
 from typing import Iterator, List, Optional
 
 import numpy as np
-from datasets.arrow_dataset import Dataset, DatasetInfoMixin
+from datasets.arrow_dataset import Dataset
 from datasets.features import Features
 from datasets.features.features import (
-    FeatureType,
     _align_features,
     _check_if_features_can_be_aligned,
-    cast_to_python_objects,
 )
 from datasets.info import DatasetInfo
 from datasets.splits import NamedSplit

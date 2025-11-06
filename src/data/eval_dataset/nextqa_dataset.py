@@ -1,7 +1,5 @@
 import os
-import sys
 
-from datasets import load_dataset
 
 from src.data.dataset_hf_path import EVAL_DATASET_HF_PATH
 from src.data.eval_dataset.base_eval_dataset import (
@@ -10,13 +8,11 @@ from src.data.eval_dataset.base_eval_dataset import (
 )
 from src.data.utils.dataset_utils import load_hf_dataset, sample_dataset
 from src.data.utils.vision_utils import (
-    temporal_random_crop,
     process_video_frames,
     load_frames,
     qa_template,
 )
 from src.model.processor import VLM_VIDEO_TOKENS
-import torchvision
 import cv2
 
 
@@ -35,7 +31,6 @@ OPTIONS = ["A", "B", "C", "D"]
 @add_metainfo_hook
 def data_prepare(batch_dict, *args, **kwargs):
     model_backbone = kwargs["model_backbone"]
-    image_resolution = kwargs["image_resolution"]
     max_frames_saved = kwargs["max_frames_saved"]
     video_root = kwargs["video_root"]
     frame_root = kwargs["frame_root"]
@@ -47,7 +42,6 @@ def data_prepare(batch_dict, *args, **kwargs):
         [],
         [],
     )
-    batch_size = len(batch_dict["question"]) if batch_dict["question"] else 0
     for video_id, query, answer, qid, _type, a0, a1, a2, a3, a4 in zip(
         batch_dict["video"],
         batch_dict["question"],

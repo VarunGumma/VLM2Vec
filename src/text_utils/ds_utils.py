@@ -17,7 +17,6 @@ from collections import OrderedDict
 
 # while this script doesn't use deepspeed to recover data, since the checkpoints are pickled with
 # DeepSpeed data structures it has to be available in the current python environment.
-import deepspeed
 from deepspeed.utils import logger
 from deepspeed.checkpoint.constants import (
     DS_VERSION,

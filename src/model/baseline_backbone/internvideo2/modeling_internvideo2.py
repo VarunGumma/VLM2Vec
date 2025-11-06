@@ -981,7 +981,7 @@ class PretrainInternVideo2(nn.Module):
 
         if use_flash_attn:
             try:
-                from flash_attn.modules.mlp import FusedMLP
+                pass
             except:
                 print(f"FusedMLP of flash_attn is not installed!!!")
 
@@ -3342,9 +3342,6 @@ class BertTokenizer(PreTrainedTokenizer):
                 writer.write(token + "\n")
                 index += 1
         return (vocab_file,)
-
-
-from huggingface_hub import PyTorchModelHubMixin
 
 
 def _frame_from_video(video):

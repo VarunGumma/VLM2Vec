@@ -20,7 +20,6 @@ def hfmodel_generate(tokenizer, model, prompt, generate_kwargs={}):
     output_seq = tokenizer.batch_decode(output_ids.cpu(), skip_special_tokens=True)[
         0
     ].strip()
-    output_tokens = [tokenizer.decode(t) for t in output_ids.cpu()]
     probs = torch.nn.functional.softmax(torch.cat(output.scores, dim=0), dim=-1)
 
     return output_seq

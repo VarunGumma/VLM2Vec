@@ -1,0 +1,1 @@
+bash experiments/public/train/train_v2-qwen2vl-2B.sh 

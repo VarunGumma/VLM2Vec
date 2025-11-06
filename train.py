@@ -101,11 +101,9 @@ def main():
                 wandb.config.update(aux_encoder_args)
 
     model = MMEBModel.build(model_args)
+    model.main_input_name = "input_ids"
 
     if model_args.add_aux_encoder:
-        # TODO: This is very important
-        # make sure the aux encoder config is correct
-        # Especially when using parallel encoder setting
         model.build_aux_encoder(aux_encoder_args)
 
     # sum the trainable parameters
@@ -118,7 +116,9 @@ def main():
     setattr(model_args, "model_backbone", model_backbone)
     setattr(training_args, "model_backbone", model_backbone)
     print_master(f"model_backbone: {model_backbone}")
+
     processor = load_processor(model_args, data_args)
+    processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
     setattr(model, "processor", processor)
 
     with open(data_args.dataset_config, "r") as yaml_file:

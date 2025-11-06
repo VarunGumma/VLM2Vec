@@ -58,7 +58,7 @@ def save_args_to_json(args, output_json_path):
         try:
             v = json.dumps(v)
             serializable_args[k] = v
-        except Exception as e:
+        except Exception:
             continue
     with open(output_json_path, "w") as arg_json:
         json.dump(serializable_args, arg_json)

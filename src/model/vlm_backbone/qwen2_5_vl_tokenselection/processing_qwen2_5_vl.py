@@ -244,7 +244,6 @@ class Qwen2_5_VLProcessor(ProcessorMixin):
 
         # ui graph
         if patch_assign_len is not None:
-            num_img = len(image_inputs["patch_assign_len"])
             cur_img_idx = 0
             pre_start = 0
             # patch_pos indicates the position of visual patch in the full input seq

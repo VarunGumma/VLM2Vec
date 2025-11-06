@@ -173,7 +173,6 @@ class LamRAQwen25VL(nn.Module):
         for t, img_path in zip(texts, images):
             if not is_query or instruction is None:
                 instruction = self.default_instruction
-            input_str = ""
             if img_path is None:
                 input_images = None  # All examples in the same batch are consistent
             else:

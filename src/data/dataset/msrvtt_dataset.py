@@ -1,5 +1,4 @@
 import os
-import sys
 
 from datasets import load_dataset
 from src.data.dataset.base_pair_dataset import (

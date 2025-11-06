@@ -1,8 +1,6 @@
 from typing import List
 from datasets import load_dataset
-from PIL import Image
 import os, ast
-import torch
 
 from torch.jit import isinstance
 from src.data.dataset.base_pair_dataset import (
@@ -12,7 +10,7 @@ from src.data.dataset.base_pair_dataset import (
     RESOLUTION_MAPPING,
 )
 from src.model.processor import PHI3V, VLM_IMAGE_TOKENS
-from src.utils import print_master, print_rank
+from src.utils import print_master
 
 
 def process_multi_images(image_basedir, image_paths) -> List[str]:

@@ -3,14 +3,14 @@ import logging
 import PIL
 from transformers.image_utils import ChannelDimension
 
-from src.model.baseline_backbone.colpali import ColPaliProcessor
-
 logger = logging.getLogger(__name__)
 
 import torch
 import numpy as np
 from src.utils import print_master
+from transformers import Qwen3VLForConditionalGeneration
 
+from src.model.baseline_backbone.colpali import ColPaliProcessor
 from src.model.baseline_backbone.llava_next import LlavaNextForConditionalGeneration
 from src.model.baseline_backbone.phi3_v.modeling_phi3_v import Phi3VForCausalLM
 from src.model.vlm_backbone.qwen2_vl import (
@@ -40,6 +40,7 @@ QWEN2_VL_TOKENSELECTION = "qwen2_vl"
 QWEN2_5_VL = "qwen2_5_vl"
 QWEN2_VL_TOKENSELECTION = "qwen2_vl_tokenselection"
 QWEN2_5_VL_TOKENSELECTION = "qwen2_5_vl_tokenselection"
+QWEN3_VL = "qwen3_vl"
 INTERNVIDEO2 = "internvideo2"
 GME = "gme"  # QWEN2-VL
 LamRA = "lamra"  # QWEN2-VL
@@ -55,6 +56,7 @@ MODEL2BACKBONE = (
         "qwen2_5_vl": QWEN2_5_VL,
         "qwen2_vl_tokenselection": QWEN2_VL_TOKENSELECTION,
         "qwen2_5_vl_tokenselection": QWEN2_5_VL_TOKENSELECTION,
+        "qwen3_vl": QWEN3_VL,
         "internvideo2": INTERNVIDEO2,
         "gme": GME,
         "lamra": LamRA,
@@ -78,6 +80,7 @@ VLM_IMAGE_TOKENS = {
     INTERNVIDEO2: "",
     COLPALI: "",
     E5_V: "<image>",
+    QWEN3_VL: "<|image_pad|>",
 }
 
 VLM_VIDEO_TOKENS = {
@@ -92,6 +95,7 @@ VLM_VIDEO_TOKENS = {
     INTERNVIDEO2: "",
     COLPALI: "",
     E5_V: "<image>",
+    QWEN3_VL: "<|video_pad|>",
 }
 
 backbone2model = {
@@ -99,6 +103,7 @@ backbone2model = {
     LLAVA_NEXT: LlavaNextForConditionalGeneration,
     QWEN2_VL: Qwen2VLForConditionalGeneration,
     QWEN2_5_VL: Qwen2_5_VLForConditionalGeneration,
+    QWEN3_VL: Qwen3VLForConditionalGeneration,
     QWEN2_VL_TOKENSELECTION: Qwen2VLTokenSelectionForConditionalGeneration,
     QWEN2_5_VL_TOKENSELECTION: Qwen2_5_VL_TokenSelectionForConditionalGeneration,
     INTERNVIDEO2: InternVideo2_Stage2,
@@ -251,12 +256,38 @@ def load_processor(model_args, data_args=None):
             uimask_ratio=model_args.uimask_ratio,
             uimask_rand=model_args.uimask_rand,
         )
+    elif model_args.model_backbone == QWEN3_VL:
+        from transformers import (
+            Qwen3VLProcessor,
+            Qwen3TokenizerFast,
+            Qwen3ImageProcessor,
+        )
+
+        min_pixels, max_pixels = None, None
+        if data_args is not None:
+            min_pixels, max_pixels = (
+                data_args.resize_min_pixels,
+                data_args.resize_max_pixels,
+            )
+        size = {
+            "shortest_edge": min_pixels,
+            "longest_edge": max_pixels,
+            "min_pixels": min_pixels,
+            "max_pixels": max_pixels,
+        }
+        image_processor = Qwen3ImageProcessor.from_pretrained(
+            model_name_or_path, size=size
+        )
+        tokenizer = Qwen3TokenizerFast.from_pretrained(model_name_or_path)
+        processor = Qwen3VLProcessor.from_pretrained(
+            model_name_or_path, image_processor=image_processor, tokenizer=tokenizer
+        )
     elif model_args.model_backbone == INTERNVIDEO2:
         return None
     elif model_args.model_backbone == COLPALI:
-        from transformers import AutoProcessor
-
-        processor = ColPaliProcessor.from_pretrained(model_args.model_name)
+        processor = ColPaliProcessor.from_pretrained(
+            model_args.model_name, use_fast=True
+        )
     else:
         from transformers import AutoProcessor
 
@@ -267,6 +298,7 @@ def load_processor(model_args, data_args=None):
                 else model_args.model_name
             ),
             trust_remote_code=True,
+            use_fast=True,
         )
     return processor
 
@@ -428,7 +460,6 @@ def Qwen2_VL_process_fn(
         [],
     )
     texts, visual_inputs = model_inputs["text"], model_inputs["images"]
-    image_exists = False
     vlm_image_token, vlm_video_token = (
         VLM_IMAGE_TOKENS[QWEN2_VL],
         VLM_VIDEO_TOKENS[QWEN2_VL],
@@ -880,6 +911,7 @@ process_vlm_inputs_fns = {
     LLAVA_NEXT: Llava_NEXT_process_fn,
     QWEN2_VL: Qwen2_VL_process_fn,
     QWEN2_5_VL: Qwen2_VL_process_fn,
+    QWEN3_VL: Qwen2_VL_process_fn,
     QWEN2_VL_TOKENSELECTION: Qwen2_VL_TokenSelection_process_fn,
     QWEN2_5_VL_TOKENSELECTION: Qwen2_VL_TokenSelection_process_fn,
     INTERNVIDEO2: InternVideo2_process_fn,
