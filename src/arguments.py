@@ -107,10 +107,6 @@ class AuxEncoderArguments:
         default=True,
         metadata={"help": "whether to use query-key normalization in the aux encoder"},
     )
-    gated_attn: bool = field(
-        default=False,
-        metadata={"help": "whether to use gated attention mechanism in the aux encoder"},
-    )
     use_gqa: bool = field(
         default=False,
         metadata={"help": "whether to use GQA attention mechanism in the aux encoder"},
@@ -147,12 +143,6 @@ class AuxEncoderArguments:
         default=False,
         metadata={
             "help": "whether to use parallel encoder architecture. By default, the aux encoder is added in series, on top of the backbone."
-        },
-    )
-    skip_connection: bool = field(
-        default=True,
-        metadata={
-            "help": "whether to use skip connection in the series aux encoder architecture"
         },
     )
 

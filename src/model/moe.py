@@ -1,8 +1,29 @@
 import torch
 from torch import nn
-from typing import Optional, Union
 import torch.nn.functional as F
-from transformers.activations import ACT2FN
+from typing import Optional, Union
+
+try:
+    from liger_kernel.transformers import LigerSwiGLUMLP as MLP
+except ImportError:
+
+    class MLP(nn.Module):
+        def __init__(self, config):
+            super().__init__()
+            self.gate_proj = nn.Linear(
+                config.hidden_size, config.intermediate_size, bias=False
+            )
+            self.down_proj = nn.Linear(
+                config.intermediate_size, config.hidden_size, bias=False
+            )
+            self.up_proj = nn.Linear(
+                config.hidden_size, config.intermediate_size, bias=False
+            )
+
+        def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+            return self.down_proj(
+                F.silu(self.up_proj(hidden_states)) * self.gate_proj(hidden_states)
+            )
 
 
 def load_balancing_loss_func(
@@ -16,10 +37,7 @@ def load_balancing_loss_func(
         return 0
 
     if isinstance(gate_logits, tuple):
-        compute_device = gate_logits[0].device
-        concatenated_gate_logits = torch.cat(
-            [layer_gate.to(compute_device) for layer_gate in gate_logits], dim=0
-        )
+        concatenated_gate_logits = torch.cat(gate_logits, dim=0)
 
     routing_weights = F.softmax(concatenated_gate_logits, dim=-1)
     _, selected_experts = torch.topk(routing_weights, top_k, dim=-1)
@@ -29,18 +47,13 @@ def load_balancing_loss_func(
         tokens_per_expert = torch.mean(expert_mask.float(), dim=0)
         router_prob_per_expert = torch.mean(routing_weights, dim=0)
     else:
-        batch_size, sequence_length = attn_mask.shape
-        num_hidden_layers = concatenated_gate_logits.shape[0] // (
-            batch_size * sequence_length
-        )
+        B, S = attn_mask.shape
+        num_hidden_layers = concatenated_gate_logits.shape[0] // (B * S)
 
         expert_attn_mask = (
             attn_mask[None, :, :, None, None]
-            .expand(
-                (num_hidden_layers, batch_size, sequence_length, top_k, num_experts)
-            )
+            .expand((num_hidden_layers, B, S, top_k, num_experts))
             .reshape(-1, top_k, num_experts)
-            .to(compute_device)
         )
 
         tokens_per_expert = torch.sum(
@@ -49,9 +62,8 @@ def load_balancing_loss_func(
 
         router_per_expert_attn_mask = (
             attn_mask[None, :, :, None]
-            .expand((num_hidden_layers, batch_size, sequence_length, num_experts))
+            .expand((num_hidden_layers, B, S, num_experts))
             .reshape(-1, num_experts)
-            .to(compute_device)
         )
 
         router_prob_per_expert = torch.sum(
@@ -62,18 +74,6 @@ def load_balancing_loss_func(
     return overall_loss * num_experts
 
 
-class MLP(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.W_g = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
-        self.W_u = nn.Linear(config.hidden_size, config.intermediate_size, bias=False)
-        self.W_d = nn.Linear(config.intermediate_size, config.hidden_size, bias=False)
-        self.act = ACT2FN[config.hidden_act]
-
-    def forward(self, x):
-        return self.W_d(self.act(self.W_g(x) * self.W_u(x)))
-
-
 class Experts(nn.ModuleList):
     """
     ModuleList of experts.
@@ -81,9 +81,7 @@ class Experts(nn.ModuleList):
 
     def __init__(self, config):
         super().__init__()
-
         self.num_experts = config.num_experts
-
         for _ in range(config.num_experts):
             self.append(MLP(config))
 
@@ -101,23 +99,18 @@ class Experts(nn.ModuleList):
         Returns:
             (batch_size * sequence_length, hidden_dim)
         """
+        _, _, D = hidden_states.shape
         final_hidden_states = torch.zeros_like(hidden_states)
-        expert_mask = F.one_hot(top_k_index, num_classes=self.num_experts).permute(
-            2, 1, 0
-        )
+        expert_mask = F.one_hot(top_k_index, self.num_experts).permute(2, 1, 0)
 
         expert_hit = torch.greater(expert_mask.sum(dim=(-1, -2)), 0).nonzero()
         for expert_idx in expert_hit:
             idx, top_x = torch.where(expert_mask[expert_idx].squeeze(0))
-            current_state = hidden_states[None, top_x].reshape(
-                -1, hidden_states.shape[-1]
-            )
+            current_state = hidden_states[None, top_x].reshape(-1, D)
             current_hidden_states = (
                 self[expert_idx](current_state) * top_k_weights[top_x, idx, None]
-            )
-            final_hidden_states.index_add_(
-                0, top_x, current_hidden_states.to(hidden_states.dtype)
-            )
+            ).to(hidden_states.dtype)
+            final_hidden_states.index_add_(0, top_x, current_hidden_states)
         return final_hidden_states
 
 
@@ -128,19 +121,20 @@ class SparseMoE(nn.Module):
         self.num_experts_per_tok = config.num_experts_per_tok
         self.gate = nn.Linear(config.hidden_size, config.num_experts, bias=False)
 
-    def route_tokens_to_experts(self, hidden_states, router_logits):
+    def route_tokens_to_experts(self, router_logits, dtype):
         routing_weights = F.softmax(router_logits.float(), dim=-1)
-        top_k_weights, top_k_index = torch.topk(routing_weights, self.num_experts_per_tok, dim=-1)
+        top_k_weights, top_k_index = torch.topk(
+            routing_weights, self.num_experts_per_tok, dim=-1
+        )
         top_k_weights /= top_k_weights.sum(dim=-1, keepdim=True)
-        top_k_weights = top_k_weights.to(hidden_states.dtype)
-        return top_k_index, top_k_weights
+        return top_k_index, top_k_weights.to(dtype)
 
     def forward(self, hidden_states: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         B, S, D = hidden_states.shape
         hidden_states = hidden_states.view(-1, D)
         router_logits = self.gate(hidden_states)
         top_k_index, top_k_weights = self.route_tokens_to_experts(
-            hidden_states, router_logits
+            router_logits, hidden_states.dtype
         )
         final_hidden_states = self.experts(
             hidden_states, top_k_index, top_k_weights

@@ -26,6 +26,11 @@ from src.model.processor import (
 from src.model.biencoder_layer import BiEncoder
 from src.model.moe import load_balancing_loss_func
 
+try:
+    from liger_kernel.transformers import LigerCrossEntropyLoss as CrossEntropyLoss
+except ImportError:
+    from torch.nn import CrossEntropyLoss
+
 from src.arguments import ModelArguments
 from src.model.processor import (
     LLAVA_NEXT,
@@ -77,7 +82,7 @@ class MMEBModel(nn.Module):
         self.normalize = normalize
         self.temperature = temperature
         self.is_ddp = dist.is_initialized()
-        self.cross_entropy = nn.CrossEntropyLoss()
+        self.cross_entropy = CrossEntropyLoss()
 
         if self.is_ddp:
             self.process_rank = dist.get_rank()
@@ -284,9 +289,9 @@ class MMEBModel(nn.Module):
                 model_args.model_name,
                 **kwargs,
                 config=config,
-                attn_implementation="flash_attention_2",
                 dtype=torch.bfloat16,
                 trust_remote_code=True,
+                attn_implementation="flash_attention_2",
             )
 
         if model_args.lora:

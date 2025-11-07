@@ -1,12 +1,20 @@
-import torch
 import torch.nn as nn
 from einops import rearrange
-from .moe import MLP, SparseMoE
+from .moe import SparseMoE
 import torch.nn.functional as F
+
+try:
+    from liger_kernel.transformers import LigerSwiGLUMLP as MLP
+    from liger_kernel.transformers import LigerRMSNorm as RMSNorm
+except ImportError:
+    from .moe import MLP
+    from torch.nn import RMSNorm
 
 
 class MultiheadAttention(nn.Module):
-    def __init__(self, q_dim, k_dim, v_dim, num_heads=8, attn_qk_norm=True, gated_attn=False):
+    def __init__(
+        self, q_dim, k_dim, v_dim, num_heads=8, attn_qk_norm=True, gated_attn=False
+    ):
         super().__init__()
         assert q_dim % num_heads == 0, "q_dim must be divisible by num_heads"
         self.num_heads = num_heads
@@ -17,18 +25,11 @@ class MultiheadAttention(nn.Module):
         self.W_o = nn.Linear(q_dim, q_dim, bias=False)
 
         if attn_qk_norm:
-            self.q_norm = nn.RMSNorm(q_dim)
-            self.k_norm = nn.RMSNorm(q_dim)
+            self.q_norm = RMSNorm(q_dim)
+            self.k_norm = RMSNorm(q_dim)
         else:
             self.q_norm = None
             self.k_norm = None
-
-        if gated_attn:
-            self.gate = nn.Linear(q_dim, q_dim)
-            self.sigmoid = nn.Sigmoid()
-        else:
-            self.gate = None
-            self.sigmoid = None
 
     def _expand_mask(self, attn_mask):
         S = attn_mask.shape[1]
@@ -65,10 +66,6 @@ class MultiheadAttention(nn.Module):
         )
 
         x = rearrange(x, "b h t d -> b t (h d)", h=self.num_heads, d=self.head_dim)
-
-        if self.gate is not None:
-            x = x * self.sigmoid(self.gate(x))
-
         return self.W_o(x)
 
 
@@ -84,7 +81,7 @@ class GroupedQueryAttention(MultiheadAttention):
         self.W_v = nn.Linear(v_dim, self.head_dim * num_kv_heads, bias=False)
 
         if self.k_norm is not None:
-            self.k_norm = nn.RMSNorm(self.head_dim * num_kv_heads)
+            self.k_norm = RMSNorm(self.head_dim * num_kv_heads)
 
     def _rearrange(self, q, k, v):
         q = rearrange(q, "b t (h d) -> b h t d", h=self.num_heads, d=self.head_dim)
@@ -101,8 +98,8 @@ class BiEncoderLayer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.mlp = MLP(config)
-        self.attn_norm = nn.RMSNorm(config.hidden_size)
-        self.mlp_norm = nn.RMSNorm(config.hidden_size)
+        self.attn_norm = RMSNorm(config.hidden_size)
+        self.mlp_norm = RMSNorm(config.hidden_size)
 
         k_dim = (
             config.backbone_model_hidden_size
@@ -175,16 +172,20 @@ class BiEncoder(nn.Module):
 
         self.in_proj = (
             nn.Sequential(
-                nn.RMSNorm(config.backbone_model_hidden_size),
-                nn.Linear(config.backbone_model_hidden_size, config.hidden_size, bias=False),
+                RMSNorm(config.backbone_model_hidden_size),
+                nn.Linear(
+                    config.backbone_model_hidden_size, config.hidden_size, bias=False
+                ),
             )
             if config.backbone_model_hidden_size != config.hidden_size
             else None
         )
         self.out_proj = (
             nn.Sequential(
-                nn.RMSNorm(config.hidden_size),
-                nn.Linear(config.hidden_size, config.backbone_model_hidden_size, bias=False),
+                RMSNorm(config.hidden_size),
+                nn.Linear(
+                    config.hidden_size, config.backbone_model_hidden_size, bias=False
+                ),
             )
             if config.backbone_model_hidden_size != config.hidden_size
             else None
@@ -196,7 +197,7 @@ class BiEncoder(nn.Module):
             [
                 (
                     BiEncoderLayerMoE(config)
-                    if (config.use_moe and (i+1) in moe_layers)
+                    if (config.use_moe and (i + 1) in moe_layers)
                     else BiEncoderLayer(config)
                 )
                 for i in range(config.num_layers)
@@ -204,8 +205,6 @@ class BiEncoder(nn.Module):
         )
 
     def forward(self, x, decoder_outputs=None, attn_mask=None):
-        residual = x
-
         if self.in_proj is not None:
             x = self.in_proj(x)
 
@@ -226,16 +225,12 @@ class BiEncoder(nn.Module):
 
         for layer, d_out in zip(self.layers, decoder_outputs):
             x_kv = d_out if self.config.parallel_encoder else x
-            if isinstance(layer, BiEncoderLayerMoE):
-                x, rl = layer(x, x_kv, x_kv, attn_mask=attn_mask)
+            x = layer(x, x_kv, x_kv, attn_mask=attn_mask)
+            if isinstance(x, tuple):
+                x, rl = x
                 router_logits.append(rl)
-            else:
-                x = layer(x, x_kv, x_kv, attn_mask=attn_mask)
 
         if self.out_proj is not None:
             x = self.out_proj(x)
-
-        if not self.config.parallel_encoder and self.config.skip_connection:
-            x = x + residual
 
         return (x, router_logits) if len(router_logits) > 0 else x

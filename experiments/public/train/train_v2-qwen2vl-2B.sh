@@ -1,5 +1,5 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=5,6,7
+export CUDA_VISIBLE_DEVICES=0,1,6
 
 echo "Python location: $(which python)"
 echo -e "Python version: $(python --version)\n"
@@ -18,7 +18,7 @@ echo "Effective batch size: $((NUM_GPUS * 128 * GRAD_ACC))"
 
 export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
-export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100"
+export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.parallel"
 export WANDB_NAME=$EXP_NAME
 export EXP_DIR=${PATH_TO_VLM2VEC_REPO}/outputs/${EXP_NAME}
 export WANDB_DIR=$EXP_DIR
@@ -34,7 +34,9 @@ cd $PATH_TO_VLM2VEC_REPO
 #         --bf16 \
 #         --lora \
 #         --lora_r 16 \
-#         --pooling eos \
+#         --lora_alpha 32 \
+#         --lora_dropout 0.1 \
+#         --pooling last \
 #         --normalize True \
 #         --temperature 0.02 \
 #         --dataloader_num_workers 16 \
@@ -75,6 +77,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
+        --ddp_find_unused_parameters False \
         --per_device_train_batch_size 128 \
         --gradient_accumulation_steps $GRAD_ACC \
         --gc_q_chunk_size 8 \
@@ -93,7 +96,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --add_aux_encoder True \
         --parallel_encoder True \
         --hidden_size 512 \
-        --hidden_act silu \
         --num_layers 28 \
         --use_gqa True \
         --attn_qk_norm True \
