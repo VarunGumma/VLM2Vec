@@ -556,7 +556,8 @@ class PaliGemmaForConditionalGeneration(PaliGemmaPreTrainedModel, GenerationMixi
             )  # Paligemma positions are 1-indexed
 
         # Merge text and images
-        if pixel_values is not None:
+        has_image = pixel_values is not None and not torch.all(pixel_values == 0)
+        if has_image:
             image_features = self.get_image_features(pixel_values)
 
             special_image_mask = (input_ids == self.config.image_token_index).unsqueeze(
@@ -651,7 +652,7 @@ class PaliGemmaForConditionalGeneration(PaliGemmaPreTrainedModel, GenerationMixi
             past_key_values=outputs.past_key_values,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
-            image_hidden_states=image_features if pixel_values is not None else None,
+            image_hidden_states=image_features if has_image else None,
         )
 
     def prepare_inputs_for_generation(

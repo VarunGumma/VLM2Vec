@@ -13,7 +13,7 @@ from src.model.processor import (
     process_vlm_inputs_fns,
 )
 
-from src.utils import print_rank
+from src.utils.basic_utils import print_rank, print_master
 import io
 
 logger = logging.getLogger(__name__)

@@ -2,7 +2,7 @@ from datasets.distributed import split_dataset_by_node
 
 from src.data.dataset.base_pair_dataset import AutoPairDataset
 from src.data.dataset.hf_datasets import interleave_datasets
-from src.utils import print_master
+from src.utils.basic_utils import print_master
 import torch
 
 

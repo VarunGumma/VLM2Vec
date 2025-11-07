@@ -10,7 +10,7 @@ from src.data.dataset.base_pair_dataset import (
     RESOLUTION_MAPPING,
 )
 from src.model.processor import PHI3V, VLM_IMAGE_TOKENS
-from src.utils import print_master
+from src.utils.basic_utils import print_master, print_rank
 
 
 def process_multi_images(image_basedir, image_paths) -> List[str]:

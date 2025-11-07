@@ -51,8 +51,8 @@ from transformers.utils import (
     is_sagemaker_mp_enabled,
 )
 
-from src.utils import batch_to_device
-from src.utils import print_master
+from src.utils.basic_utils import batch_to_device
+from src.utils.basic_utils import print_master, print_rank
 
 if is_apex_available():
     from apex import amp

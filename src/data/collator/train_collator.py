@@ -18,7 +18,7 @@ from src.model.processor import (
 )
 from PIL import Image
 import io
-from src.utils import print_rank
+from src.utils.basic_utils import print_rank, print_master
 
 
 logger = logging.getLogger(__name__)

@@ -1,8 +1,8 @@
 import os
 
 from datasets import load_dataset
-from src.data.dataset_hf_path import EVAL_DATASET_HF_PATH
-from src.data.utils.dataset_utils import load_hf_dataset, sample_dataset
+from src.constant.dataset_hf_path import EVAL_DATASET_HF_PATH
+from src.utils.dataset_utils import load_hf_dataset, sample_dataset
 
 from src.data.eval_dataset.base_eval_dataset import (
     AutoEvalPairDataset,
@@ -10,10 +10,7 @@ from src.data.eval_dataset.base_eval_dataset import (
     RESOLUTION_MAPPING,
 )
 from src.data.eval_dataset.base_eval_dataset import ImageVideoInstance
-from src.data.utils.vision_utils import (
-    load_frames,
-    save_frames,
-)
+from src.utils.vision_utils.vision_utils import load_frames, save_frames
 from src.model.processor import process_input_text
 
 TASK_INST_QRY_TEXT = "Find the clip that corresponds to the given text:"
@@ -192,8 +189,9 @@ def load_momentseeker_dataset(model_args, data_args, *args, **kwargs):
         dataset = load_hf_dataset(EVAL_DATASET_HF_PATH[kwargs["dataset_name"]])
     dataset = sample_dataset(dataset, **kwargs)
 
-    kwargs["model_backbone"] = model_args.model_backbone
-    kwargs["image_resolution"] = data_args.image_resolution
+    kwargs['model_backbone'] = model_args.model_backbone
+    kwargs['image_resolution'] = data_args.image_resolution
+    kwargs['global_dataset_name'] = kwargs['dataset_name'] if kwargs['dataset_name'] else DATASET_PARSER_NAME
 
     dataset = dataset.map(
         lambda x: data_prepare(x, **kwargs),

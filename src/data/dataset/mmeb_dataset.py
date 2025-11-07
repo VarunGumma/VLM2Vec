@@ -13,7 +13,7 @@ from src.data.dataset.base_pair_dataset import (
     RESOLUTION_MAPPING,
 )
 from src.model.processor import PHI3V, VLM_IMAGE_TOKENS
-from src.utils import print_master, print_rank
+from src.utils.basic_utils import print_master, print_rank
 from torch.utils.data import Dataset
 
 
