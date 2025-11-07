@@ -12,14 +12,42 @@ VISDOC_DATASETS = {
     "ViDoRe_tabfquad": ("vidore/tabfquad_test_subsampled_beir", None, "test"),
     "ViDoRe_tatdqa": ("vidore/tatdqa_test_beir", None, "test"),
     "ViDoRe_shiftproject": ("vidore/shiftproject_test_beir", None, "test"),
-    "ViDoRe_syntheticDocQA_artificial_intelligence": ("vidore/syntheticDocQA_artificial_intelligence_test_beir", None, "test"),
-    "ViDoRe_syntheticDocQA_energy": ("vidore/syntheticDocQA_energy_test_beir", None, "test"),
-    "ViDoRe_syntheticDocQA_government_reports": ("vidore/syntheticDocQA_government_reports_test_beir", None, "test"),
-    "ViDoRe_syntheticDocQA_healthcare_industry": ("vidore/syntheticDocQA_healthcare_industry_test_beir", None, "test"),
+    "ViDoRe_syntheticDocQA_artificial_intelligence": (
+        "vidore/syntheticDocQA_artificial_intelligence_test_beir",
+        None,
+        "test",
+    ),
+    "ViDoRe_syntheticDocQA_energy": (
+        "vidore/syntheticDocQA_energy_test_beir",
+        None,
+        "test",
+    ),
+    "ViDoRe_syntheticDocQA_government_reports": (
+        "vidore/syntheticDocQA_government_reports_test_beir",
+        None,
+        "test",
+    ),
+    "ViDoRe_syntheticDocQA_healthcare_industry": (
+        "vidore/syntheticDocQA_healthcare_industry_test_beir",
+        None,
+        "test",
+    ),
     # Visdoc-ViDoRe v2 4
-    "ViDoRe_esg_reports_human_labeled_v2": ("vidore/esg_reports_human_labeled_v2", None, "test"),
-    "ViDoRe_biomedical_lectures_v2_multilingual": ("vidore/biomedical_lectures_v2", None, "test"),
-    "ViDoRe_economics_reports_v2_multilingual": ("vidore/economics_reports_v2", None, "test"),
+    "ViDoRe_esg_reports_human_labeled_v2": (
+        "vidore/esg_reports_human_labeled_v2",
+        None,
+        "test",
+    ),
+    "ViDoRe_biomedical_lectures_v2_multilingual": (
+        "vidore/biomedical_lectures_v2",
+        None,
+        "test",
+    ),
+    "ViDoRe_economics_reports_v2_multilingual": (
+        "vidore/economics_reports_v2",
+        None,
+        "test",
+    ),
     "ViDoRe_esg_reports_v2_multilingual": ("vidore/esg_reports_v2", None, "test"),
     # Visdoc-VisRAG 6
     "VisRAG_ArxivQA": ("openbmb/VisRAG-Ret-Test-ArxivQA", None, "train"),
@@ -107,7 +135,6 @@ IMAGE_DATASETS = {
 }
 
 
-
 def save_dataset_to_disk(dataset, output_path, file_basename=""):
     """Helper function to save a dataset to parquet and jsonl."""
     # Save to parquet
@@ -118,18 +145,19 @@ def save_dataset_to_disk(dataset, output_path, file_basename=""):
 
     # Save to jsonl
     jsonl_path = os.path.join(output_path, f"{file_basename}.jsonl")
-    df.to_json(jsonl_path, orient='records', lines=True)
+    df.to_json(jsonl_path, orient="records", lines=True)
     print(f"  Saved {file_basename} to {jsonl_path}")
+
 
 def download_visdoc_datasets(datasets_map, output_dir):
     """
     Downloads visual document datasets, handling the special BEIR format.
     """
-    print("\n" + "="*20 + " Downloading Visual Document Datasets " + "="*20)
+    print("\n" + "=" * 20 + " Downloading Visual Document Datasets " + "=" * 20)
     for dataset_name, (repo, subset, split) in datasets_map.items():
         print(f"--- Processing {dataset_name} from {repo} ---")
         try:
-            for config_name in ['corpus', 'qrels', 'queries']:
+            for config_name in ["corpus", "qrels", "queries"]:
                 print(f"  Downloading '{dataset_name}-{config_name}'")
                 dataset_dir = os.path.join(output_dir, dataset_name, config_name)
                 os.makedirs(dataset_dir, exist_ok=True)
@@ -140,16 +168,23 @@ def download_visdoc_datasets(datasets_map, output_dir):
         except Exception as e:
             print(f"Failed to download or process {dataset_name}: {e}")
 
+
 def download_standard_datasets(datasets_map, modality_name, output_dir):
     """Downloads standard (non-BEIR) datasets for a given modality."""
-    print(f"\n" + "="*20 + f" Downloading {modality_name.title()} Datasets " + "="*20)
+    print(
+        f"\n" + "=" * 20 + f" Downloading {modality_name.title()} Datasets " + "=" * 20
+    )
     for name, (repo, subset, split) in datasets_map.items():
         print(f"--- Processing {name} from {repo} ---")
         try:
             dataset_dir = os.path.join(output_dir, name)
             os.makedirs(dataset_dir, exist_ok=True)
 
-            dataset = load_dataset(repo, subset, split=split) if subset else load_dataset(repo, split=split)
+            dataset = (
+                load_dataset(repo, subset, split=split)
+                if subset
+                else load_dataset(repo, split=split)
+            )
             save_dataset_to_disk(dataset, dataset_dir, file_basename=split)
 
         except Exception as e:
@@ -165,7 +200,7 @@ def clone_hf_dataset(repo_id: str, output_path: str):
         output_path (str): The local path where the repository should be cloned.
     """
     repo_url = f"https://huggingface.co/datasets/{repo_id}"
-    
+
     # Ensure the parent directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
 
@@ -176,17 +211,19 @@ def clone_hf_dataset(repo_id: str, output_path: str):
     command = f"git clone {repo_url} {output_path}"
     print_rank(f"  Cloning {repo_id} to {output_path}...")
     print_rank(f"  Executing: {command}")
-    
+
     # Execute the command using run_shell_command
     # The agent will replace this with a tool call.
     # For direct script execution, you might use os.system(command)
     # For the agent, this will be a tool call.
     # Example of how the agent would call it:
     # run_shell_command(command=command, description=f"Cloning {repo_id}")
-    
+
     # Placeholder for agent execution (replace with actual tool call when running as agent)
     # For now, using os.system for script completeness if run directly
-    result = os.system(command) # This line will be replaced by the agent with a tool call
+    result = os.system(
+        command
+    )  # This line will be replaced by the agent with a tool call
     if result != 0:
         print_rank(f"  Failed to clone {repo_id}. Exit code: {result}")
     else:
@@ -196,12 +233,16 @@ def clone_hf_dataset(repo_id: str, output_path: str):
         lfs_command = f"cd {output_path} && git lfs pull"
         lfs_result = os.system(lfs_command)
         if lfs_result != 0:
-            print_rank(f"  Failed to pull Git LFS files for {repo_id}. Exit code: {lfs_result}")
+            print_rank(
+                f"  Failed to pull Git LFS files for {repo_id}. Exit code: {lfs_result}"
+            )
         else:
             print_rank(f"  Successfully pulled Git LFS files for {repo_id}.")
 
 
-def download_datasets_via_git_clone(datasets_map: dict, base_output_dir: str, modality_name: str):
+def download_datasets_via_git_clone(
+    datasets_map: dict, base_output_dir: str, modality_name: str
+):
     """
     Downloads datasets by git cloning their Hugging Face repositories.
 
@@ -210,15 +251,20 @@ def download_datasets_via_git_clone(datasets_map: dict, base_output_dir: str, mo
         base_output_dir (str): The base directory to save the cloned repositories.
         modality_name (str): The name of the modality (e.g., "visdoc-tasks", "video-tasks").
     """
-    print(f"\n" + "="*20 + f" Cloning {modality_name.replace('-', ' ').title()} Datasets " + "="*20)
-    
+    print(
+        f"\n"
+        + "=" * 20
+        + f" Cloning {modality_name.replace('-', ' ').title()} Datasets "
+        + "=" * 20
+    )
+
     for dataset_name, (repo_id, _, _) in datasets_map.items():
         # Construct the full output path for this dataset
         # The repo_id might contain slashes, so we need to make sure the last part is the dataset folder name
         # e.g., "vidore/esg_reports_human_labeled_v2" -> "esg_reports_human_labeled_v2"
-        dataset_folder_name = repo_id.split('/')[-1]
+        dataset_folder_name = repo_id.split("/")[-1]
         output_path = os.path.join(base_output_dir, dataset_folder_name)
-        
+
         clone_hf_dataset(repo_id, output_path)
 
 
@@ -230,7 +276,7 @@ if __name__ == "__main__":
     # download_standard_datasets(IMAGE_DATASETS, "image", output_dir="hf_datasets/image-tasks")
 
     BASE_RAW_DATA_DIR = "/mnt/disks/rmeng_pd/data/vlm2vec/raw"
-    
+
     # Ensure git lfs is installed and configured
     print_rank("  Ensuring git lfs is installed...")
     os.system("git lfs install")

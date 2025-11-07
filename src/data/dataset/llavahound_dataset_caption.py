@@ -49,11 +49,22 @@ def data_prepare(batch_dict, *args, **kwargs):
         zip(batch_dict["id"], batch_dict["conversations"], batch_dict["video"])
     ):
         try:
-            if data_mode == 'caption_retrieval':
-                query, pos_text = process_conversations(conversations, video_token=VLM_VIDEO_TOKENS[model_backbone])
-                frame_paths = process_video_frames(os.path.join(frame_basedir, video_id), num_frames=num_frames)
-                assert len(frame_paths) > 0, f"llavahound_dataset_caption.py: No frames found for video_id={video_id} at {os.path.join(frame_basedir, video_id)}."
-                video_frames = {"bytes": [None] * num_frames, "paths": frame_paths, "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)] * num_frames}
+            if data_mode == "caption_retrieval":
+                query, pos_text = process_conversations(
+                    conversations, video_token=VLM_VIDEO_TOKENS[model_backbone]
+                )
+                frame_paths = process_video_frames(
+                    os.path.join(frame_basedir, video_id), num_frames=num_frames
+                )
+                assert (
+                    len(frame_paths) > 0
+                ), f"llavahound_dataset_caption.py: No frames found for video_id={video_id} at {os.path.join(frame_basedir, video_id)}."
+                video_frames = {
+                    "bytes": [None] * num_frames,
+                    "paths": frame_paths,
+                    "resolutions": [RESOLUTION_MAPPING.get(image_resolution, None)]
+                    * num_frames,
+                }
                 query_texts.append(query)
                 pos_texts.append(pos_text)
                 neg_texts.append("")

@@ -189,9 +189,11 @@ def load_momentseeker_dataset(model_args, data_args, *args, **kwargs):
         dataset = load_hf_dataset(EVAL_DATASET_HF_PATH[kwargs["dataset_name"]])
     dataset = sample_dataset(dataset, **kwargs)
 
-    kwargs['model_backbone'] = model_args.model_backbone
-    kwargs['image_resolution'] = data_args.image_resolution
-    kwargs['global_dataset_name'] = kwargs['dataset_name'] if kwargs['dataset_name'] else DATASET_PARSER_NAME
+    kwargs["model_backbone"] = model_args.model_backbone
+    kwargs["image_resolution"] = data_args.image_resolution
+    kwargs["global_dataset_name"] = (
+        kwargs["dataset_name"] if kwargs["dataset_name"] else DATASET_PARSER_NAME
+    )
 
     dataset = dataset.map(
         lambda x: data_prepare(x, **kwargs),

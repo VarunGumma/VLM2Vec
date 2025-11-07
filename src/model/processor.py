@@ -774,8 +774,8 @@ def InternVL_process_fn(model_inputs: dict, processor, max_length=None):
 
 
 def ColPali_process_fn(model_inputs: dict, processor, max_length=None):
-    texts, images = model_inputs['text'], model_inputs['images']
-    
+    texts, images = model_inputs["text"], model_inputs["images"]
+
     input_ids_batch = []
     attention_mask_batch = []
     pixel_values_batch = []
@@ -783,22 +783,22 @@ def ColPali_process_fn(model_inputs: dict, processor, max_length=None):
     for text, image in zip(texts, images):
         if image is not None:
             inputs = processor.process_images([image])
-            pixel_values_batch.append(inputs['pixel_values'])
+            pixel_values_batch.append(inputs["pixel_values"])
         else:
             inputs = processor.process_queries([text])
             pixel_values_batch.append(None)
 
-        input_ids_batch.append(inputs['input_ids'].squeeze().tolist())
-        attention_mask_batch.append(inputs['attention_mask'].squeeze().tolist())
+        input_ids_batch.append(inputs["input_ids"].squeeze().tolist())
+        attention_mask_batch.append(inputs["attention_mask"].squeeze().tolist())
 
     # Pad input_ids and attention_mask
     padded_text_inputs = processor.tokenizer.pad(
-        {'input_ids': input_ids_batch, 'attention_mask': attention_mask_batch},
-        return_tensors="pt"
+        {"input_ids": input_ids_batch, "attention_mask": attention_mask_batch},
+        return_tensors="pt",
     )
-    
-    final_input_ids = padded_text_inputs['input_ids']
-    final_attention_mask = padded_text_inputs['attention_mask']
+
+    final_input_ids = padded_text_inputs["input_ids"]
+    final_attention_mask = padded_text_inputs["attention_mask"]
 
     # Handle pixel_values
     if any(pv is not None for pv in pixel_values_batch):
@@ -808,7 +808,7 @@ def ColPali_process_fn(model_inputs: dict, processor, max_length=None):
             if pv is not None:
                 representative_pv_shape = pv.shape
                 break
-        
+
         processed_pixel_values = []
         for pv in pixel_values_batch:
             if pv is None:
@@ -824,12 +824,14 @@ def ColPali_process_fn(model_inputs: dict, processor, max_length=None):
         default_channels = 3
         default_height = 448
         default_width = 448
-        final_pixel_values = torch.zeros(batch_size, default_channels, default_height, default_width)
+        final_pixel_values = torch.zeros(
+            batch_size, default_channels, default_height, default_width
+        )
 
     return {
-        'input_ids': final_input_ids,
-        'attention_mask': final_attention_mask,
-        'pixel_values': final_pixel_values,
+        "input_ids": final_input_ids,
+        "attention_mask": final_attention_mask,
+        "pixel_values": final_pixel_values,
     }
 
 

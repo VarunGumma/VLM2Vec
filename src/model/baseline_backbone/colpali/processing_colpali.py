@@ -36,7 +36,14 @@ class ColPaliProcessor(BaseVisualRetrieverProcessor, PaliGemmaProcessor):
         texts_doc = [self.visual_prompt_prefix] * len(images)
         images = [i[0].convert("RGB") if i is not None else None for i in images]
         # @ruimeng, ColPali is buggy processing images of which size<=3
-        images = [i.resize((max(i.size), max(i.size))) if (i is not None and min(i.size) < 5) else i for i in images]
+        images = [
+            (
+                i.resize((max(i.size), max(i.size)))
+                if (i is not None and min(i.size) < 5)
+                else i
+            )
+            for i in images
+        ]
         batch_doc = self(
             text=texts_doc,
             images=images,
