@@ -1674,7 +1674,7 @@ QWEN2_5_VL_INPUTS_DOCSTRING = r"""
 
 
 class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMixin):
-    _tied_weights_keys = ["lm_head.weight"]
+    # _tied_weights_keys = ["lm_head.weight"]
     config_class = Qwen2_5_VLConfig
     _no_split_modules = ["Qwen2VLDecoderLayer", "Qwen2_5_VLVisionBlock"]
 
@@ -1684,8 +1684,8 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
             config.vision_config
         )
         self.model = Qwen2_5_VLModel(config)
-        self.vocab_size = config.vocab_size
-        self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
+        # self.vocab_size = config.vocab_size
+        # self.lm_head = nn.Linear(config.hidden_size, config.vocab_size, bias=False)
         self.rope_deltas = None  # cache rope_deltas here
 
         # Initialize weights and apply final processing
@@ -1697,11 +1697,11 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
     def set_input_embeddings(self, value):
         self.model.embed_tokens = value
 
-    def get_output_embeddings(self):
-        return self.lm_head
+    # def get_output_embeddings(self):
+    #     return self.lm_head
 
-    def set_output_embeddings(self, new_embeddings):
-        self.lm_head = new_embeddings
+    # def set_output_embeddings(self, new_embeddings):
+    #     self.lm_head = new_embeddings
 
     def set_decoder(self, decoder):
         self.model = decoder
@@ -2240,23 +2240,25 @@ class Qwen2_5_VLForConditionalGeneration(Qwen2_5_VLPreTrainedModel, GenerationMi
             cache_position=cache_position,
         )
 
-        hidden_states = outputs[0]
-        logits = self.lm_head(hidden_states)
+        # hidden_states = outputs[0]
+        # logits = self.lm_head(hidden_states)
 
         loss = None
-        if labels is not None:
-            # Upcast to float if we need to compute the loss to avoid potential precision issues
-            logits = logits.float()
-            # Shift so that tokens < n predict n
-            shift_logits = logits[..., :-1, :].contiguous()
-            shift_labels = labels[..., 1:].contiguous()
-            # Flatten the tokens
-            loss_fct = CrossEntropyLoss()
-            shift_logits = shift_logits.view(-1, self.config.vocab_size)
-            shift_labels = shift_labels.view(-1)
-            # Enable model parallelism
-            shift_labels = shift_labels.to(shift_logits.device)
-            loss = loss_fct(shift_logits, shift_labels)
+        logits = None
+
+        # if labels is not None:
+        #     # Upcast to float if we need to compute the loss to avoid potential precision issues
+        #     logits = logits.float()
+        #     # Shift so that tokens < n predict n
+        #     shift_logits = logits[..., :-1, :].contiguous()
+        #     shift_labels = labels[..., 1:].contiguous()
+        #     # Flatten the tokens
+        #     loss_fct = CrossEntropyLoss()
+        #     shift_logits = shift_logits.view(-1, self.config.vocab_size)
+        #     shift_labels = shift_labels.view(-1)
+        #     # Enable model parallelism
+        #     shift_labels = shift_labels.to(shift_logits.device)
+        #     loss = loss_fct(shift_logits, shift_labels)
 
         if not return_dict:
             output = (logits,) + outputs[1:]

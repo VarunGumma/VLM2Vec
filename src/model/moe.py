@@ -99,7 +99,7 @@ class Experts(nn.ModuleList):
         Returns:
             (batch_size * sequence_length, hidden_dim)
         """
-        _, _, D = hidden_states.shape
+        D = hidden_states.shape[-1]
         final_hidden_states = torch.zeros_like(hidden_states)
         expert_mask = F.one_hot(top_k_index, self.num_experts).permute(2, 1, 0)
 

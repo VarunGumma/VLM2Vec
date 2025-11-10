@@ -5,22 +5,27 @@ import torch.distributed as dist
 from torch import nn, Tensor
 import torch.nn.functional as F
 from safetensors.torch import save_file
-from transformers import PreTrainedModel, AutoModelForCausalLM, AutoConfig
+from transformers import PreTrainedModel, AutoModelForCausalLM, AutoConfig, modeling_utils
 from peft import LoraConfig, get_peft_model, PeftModel
-from src.model.processor import QWEN2_5_VL_TOKENSELECTION
 from src.arguments import ModelArguments, AuxEncoderArguments
 from src.model.processor import (
-    LLAVA_NEXT,
-    QWEN2_VL,
-    PHI3V,
     get_backbone_name,
     print_master,
-    QWEN2_5_VL,
     backbone2model,
+    LLAVA_NEXT,
+    QWEN2_VL,
+    QWEN2_5_VL,
     QWEN3_VL,
+    PHI3V,
     QWEN2_VL_TOKENSELECTION,
     QWEN2_5_VL_TOKENSELECTION,
+    INTERNVIDEO2,
+    VLM_IMAGE_TOKENS,
     E5_V,
+    GME,
+    LamRA,
+    LamRA_QWEN2_5,
+    COLPALI,
 )
 
 from src.model.biencoder_layer import BiEncoder
@@ -31,24 +36,6 @@ try:
 except ImportError:
     from torch.nn import CrossEntropyLoss
 
-from src.arguments import ModelArguments
-from src.model.processor import (
-    LLAVA_NEXT,
-    QWEN2_VL,
-    QWEN3_VL,
-    PHI3V,
-    get_backbone_name,
-    print_master,
-    QWEN2_5_VL,
-    INTERNVIDEO2,
-    QWEN2_VL_TOKENSELECTION,
-    backbone2model,
-    GME,
-    VLM_IMAGE_TOKENS,
-    LamRA,
-    LamRA_QWEN2_5,
-    COLPALI,
-)
 from src.model.baseline_backbone.colpali import ColPali
 from src.model.baseline_backbone.gme.gme_inference import GmeQwen2VL
 from src.model.baseline_backbone.lamra.lamra_inference import LamRAQwen2VL
@@ -56,7 +43,6 @@ from src.model.baseline_backbone.lamra.lamra_qwen25_inference import LamRAQwen25
 from src.model.baseline_backbone.phi3_v.modeling_phi3_v import Phi3VForCausalLM
 from src.model.baseline_backbone.llava_next import LlavaNextForConditionalGeneration
 
-from transformers import modeling_utils
 
 if (
     not hasattr(modeling_utils, "ALL_PARALLEL_STYLES")
@@ -97,6 +83,19 @@ class MMEBModel(nn.Module):
             return next(self.parameters()).device
         except StopIteration:
             return torch.device("cpu")
+
+    def gradient_checkpointing_enable(
+        self, gradient_checkpointing_kwargs: Optional[dict] = None
+    ):
+
+        if not hasattr(self.encoder, "gradient_checkpointing_enable"):
+            self.encoder.gradient_checkpointing_enable(
+                gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
+            )
+        else:
+            raise NotImplementedError(
+                "The underlying backbone encoder does not support gradient checkpointing."
+            )
 
     def encode_input(self, input):
         if getattr(self, "model_backbone", None) == INTERNVIDEO2:
@@ -295,13 +294,13 @@ class MMEBModel(nn.Module):
             )
 
         if model_args.lora:
-            print_master(f"Loading lora adapter from {base_model}")
             lora_config = LoraConfig(
                 r=model_args.lora_r,
                 lora_alpha=model_args.lora_alpha,
                 target_modules=model_args.lora_target_modules.split(","),
                 lora_dropout=model_args.lora_dropout,
-                use_dora=True,
+                use_dora=model_args.dora,
+                use_rslora=model_args.rslora,
                 inference_mode=False,
                 init_lora_weights="gaussian",
                 task_type="FEATURE_EXTRACTION",
@@ -320,10 +319,6 @@ class MMEBModel(nn.Module):
                 normalize=model_args.normalize,
                 temperature=model_args.temperature,
             )
-            if model_args.freeze_backbone:
-                for p in model.encoder.parameters():
-                    p.requires_grad = False
-
         return model
 
     def gradient_checkpointing_enable(

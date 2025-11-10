@@ -29,11 +29,19 @@ class ModelArguments:
     temperature: float = field(
         default=0.02, metadata={"help": "temperature for softmax"}
     )
+    dora: bool = field(
+        default=False,
+        metadata={"help": "do parameter-efficient fine-tuning with dora"},
+    )
+    rslora: bool = field(
+        default=False,
+        metadata={"help": "do parameter-efficient fine-tuning with rslora"},
+    )
     lora: bool = field(
         default=False, metadata={"help": "do parameter-efficient fine-tuning with lora"}
     )
     lora_r: int = field(default=16, metadata={"help": "lora r"})
-    lora_alpha: int = field(default=64, metadata={"help": "lora alpha"})
+    lora_alpha: int = field(default=32, metadata={"help": "lora alpha"})
     lora_dropout: float = field(default=0.1, metadata={"help": "lora dropout"})
     lora_target_modules: str = field(
         default="qkv_proj,o_proj,gate_up_proj,down_proj,k_proj,q_proj,out_proj,v_proj",
@@ -76,9 +84,6 @@ class ModelArguments:
         metadata={
             "help": "Specify the layers of the vision model to skip for token selection"
         },
-    )
-    freeze_backbone_model: bool = field(
-        default=False, metadata={"help": "whether to freeze the backbone model"}
     )
     add_aux_encoder: bool = field(
         default=False, metadata={"help": "whether to add an auxiliary encoder"}

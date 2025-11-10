@@ -10,20 +10,19 @@ import numpy as np
 from src.utils.basic_utils import print_master
 
 from src.model.baseline_backbone.colpali import ColPaliProcessor
-from src.model.baseline_backbone.llava_next import LlavaNextForConditionalGeneration
+
 from src.model.baseline_backbone.phi3_v.modeling_phi3_v import Phi3VForCausalLM
-from src.model.vlm_backbone.qwen2_vl import (
-    Qwen2VLForConditionalGeneration,
-    Qwen2VLProcessor,
-)
-from src.model.vlm_backbone.qwen2_vl_tokenselection import (
-    Qwen2VLForConditionalGeneration as Qwen2VLTokenSelectionForConditionalGeneration,
-    Qwen2VLProcessor as Qwen2VLTokenSelectionProcessor,
-)
 from src.model.baseline_backbone.internvideo2.modeling_internvideo2 import (
     InternVideo2_Stage2,
 )
+
+from src.model.baseline_backbone.llava_next import LlavaNextForConditionalGeneration
+from src.model.vlm_backbone.qwen2_vl import Qwen2VLForConditionalGeneration
 from src.model.vlm_backbone.qwen2_5_vl import Qwen2_5_VLForConditionalGeneration
+
+from src.model.vlm_backbone.qwen2_vl_tokenselection import (
+    Qwen2VLForConditionalGeneration as Qwen2VLTokenSelectionForConditionalGeneration,
+)
 from src.model.vlm_backbone.qwen2_5_vl_tokenselection import (
     Qwen2_5_VLForConditionalGeneration as Qwen2_5_VL_TokenSelectionForConditionalGeneration,
 )
@@ -102,7 +101,6 @@ backbone2model = {
     LLAVA_NEXT: LlavaNextForConditionalGeneration,
     QWEN2_VL: Qwen2VLForConditionalGeneration,
     QWEN2_5_VL: Qwen2_5_VLForConditionalGeneration,
-    QWEN3_VL: Qwen3VLForConditionalGeneration,
     QWEN2_VL_TOKENSELECTION: Qwen2VLTokenSelectionForConditionalGeneration,
     QWEN2_5_VL_TOKENSELECTION: Qwen2_5_VL_TokenSelectionForConditionalGeneration,
     INTERNVIDEO2: InternVideo2_Stage2,
@@ -447,9 +445,7 @@ def Phi3V_process_fn(model_inputs: dict, processor, max_length=None):
     return inputs
 
 
-def Qwen2_VL_process_fn(
-    model_inputs: dict, processor: Qwen2VLProcessor, max_length=None
-):
+def Qwen2_VL_process_fn(model_inputs: dict, processor, max_length=None):
     # TODO: set separate max_len for text/visual inputs, currently max_length is only applied to text-only data
     input_ids, pixel_values, image_grid_thw, pixel_values_videos, video_grid_thw = (
         [],
@@ -541,11 +537,6 @@ def Qwen2_VL_process_fn(
         batch_encoding["input_ids"],
         batch_encoding["attention_mask"],
     )
-    # manually enforce long type due to:
-    # (1) [rank7]: RuntimeError: Expected tensor for argument #1 'indices' to have one of the following scalar types: Long, Int; but got torch.cuda.FloatTensor instead (while checking arguments for embedding)
-    # (2) [rank7]:   File "/fsx/home/ruimeng/project/VLM2Vec/src/model.py", line 45, in _pooling
-    #     [rank7]:     reps = last_hidden_state[
-    #     [rank7]: IndexError: tensors used as indices must be long, int, byte or bool tensors
     inputs = {
         "input_ids": input_ids.long(),
         "attention_mask": attention_mask.long(),
@@ -560,7 +551,7 @@ def Qwen2_VL_process_fn(
     return inputs
 
 
-def Gme_process_fn(model_inputs: dict, processor: Qwen2VLProcessor, max_length=None):
+def Gme_process_fn(model_inputs: dict, processor, max_length=None):
     inputs = {
         "texts": model_inputs["text"],
         "images": model_inputs["images"],
@@ -568,9 +559,7 @@ def Gme_process_fn(model_inputs: dict, processor: Qwen2VLProcessor, max_length=N
     return inputs
 
 
-def Qwen2_VL_TokenSelection_process_fn(
-    model_inputs: dict, processor: Qwen2VLTokenSelectionProcessor, max_length=None
-):
+def Qwen2_VL_TokenSelection_process_fn(model_inputs: dict, processor, max_length=None):
     # TODO: set separate max_len for text/visual inputs, currently max_length is only applied to text-only data
     input_ids, pixel_values, image_grid_thw, pixel_values_videos, video_grid_thw = (
         [],
@@ -696,11 +685,6 @@ def Qwen2_VL_TokenSelection_process_fn(
             ]
             select_mask = torch.cat(padded_key, dim=0)
 
-    # manually enforce long type due to:
-    # (1) [rank7]: RuntimeError: Expected tensor for argument #1 'indices' to have one of the following scalar types: Long, Int; but got torch.cuda.FloatTensor instead (while checking arguments for embedding)
-    # (2) [rank7]:   File "/fsx/home/ruimeng/project/VLM2Vec/src/model.py", line 45, in _pooling
-    #     [rank7]:     reps = last_hidden_state[
-    #     [rank7]: IndexError: tensors used as indices must be long, int, byte or bool tensors
     inputs = {"input_ids": input_ids.long(), "attention_mask": attention_mask.long()}
     inputs["pixel_values"] = pixel_values
     inputs["image_grid_thw"] = image_grid_thw

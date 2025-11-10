@@ -19,7 +19,7 @@ echo "Effective batch size: $((NUM_GPUS * PER_DEVICE_BS * GRAD_ACC))"
 
 export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
-export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100"
+export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.series.hidden256.layers3.gqa.attnqknorm.heads8.kvheads4.intsize1024"
 export WANDB_NAME=$EXP_NAME
 export EXP_DIR=${PATH_TO_VLM2VEC_REPO}/outputs/${EXP_NAME}
 export WANDB_DIR=$EXP_DIR
@@ -34,11 +34,15 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --bf16 \
         --lora \
         --dora \
-        --lora_r 16 \
-        --lora_dropout 0.1 \
-        --pooling eos \
+        --lora_r 1 \
+        --lora_alpha 2 \
+        --lora_dropout 0.0 \
+        --lora-target-modules "qkv,proj,gate_proj,up_proj,down_proj,o_proj,k_proj,q_proj,v_proj" \
+        --pooling mean \
         --normalize True \
         --temperature 0.02 \
+        --gradient-checkpointing True \
+        --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --dataloader_num_workers 16 \
         --dataloader_persistent_workers \
         --dataloader_pin_memory True \
@@ -48,7 +52,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
-        --per_device_train_batch_size 128 \
+        --per_device_train_batch_size $PER_DEVICE_BS \
         --gradient_accumulation_steps $GRAD_ACC \
         --gc_q_chunk_size 8 \
         --gc_p_chunk_size 8 \
@@ -62,4 +66,14 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --save_safetensors True \
         --remove_unused_columns False \
         --resume_from auto \
-        --report_to wandb 2>&1 | tee $EXP_DIR/train.log
+        --report_to wandb \
+        --add_aux_encoder True \
+        --parallel_encoder False \
+        --hidden_size 256 \
+        --num_layers 3 \
+        --use_gqa True \
+        --attn_qk_norm True \
+        --num_attn_heads 8 \
+        --num_kv_attn_heads 4 \
+        --intermediate_size 1024 \
+        --backbone_model_hidden_size 1536 2>&1 | tee $EXP_DIR/train.log

@@ -12,9 +12,7 @@ except ImportError:
 
 
 class MultiheadAttention(nn.Module):
-    def __init__(
-        self, q_dim, k_dim, v_dim, num_heads=8, attn_qk_norm=True, gated_attn=False
-    ):
+    def __init__(self, q_dim, k_dim, v_dim, num_heads=8, attn_qk_norm=True):
         super().__init__()
         assert q_dim % num_heads == 0, "q_dim must be divisible by num_heads"
         self.num_heads = num_heads
