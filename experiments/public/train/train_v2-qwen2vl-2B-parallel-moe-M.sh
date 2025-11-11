@@ -50,6 +50,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
+        --optim "adamw_apex_fused" \
         --gradient_checkpointing True \
         --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --per_device_train_batch_size $PER_DEVICE_BS \

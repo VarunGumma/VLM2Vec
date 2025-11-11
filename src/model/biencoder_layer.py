@@ -5,10 +5,16 @@ import torch.nn.functional as F
 
 try:
     from liger_kernel.transformers import LigerSwiGLUMLP as MLP
-    from liger_kernel.transformers import LigerRMSNorm as RMSNorm
 except ImportError:
-    from .moe import MLP
-    from torch.nn import RMSNorm
+    from .mlp import MLP
+
+try:
+    from apex.normalization import FusedRMSNorm as RMSNorm
+except ImportError:
+    try:
+        from liger_kernel.transformers import LigerRMSNorm as RMSNorm
+    except ImportError:
+        from torch.nn import RMSNorm
 
 
 class MultiheadAttention(nn.Module):
@@ -189,7 +195,11 @@ class BiEncoder(nn.Module):
             else None
         )
 
-        moe_layers = eval(config.moe_layers)
+        moe_layers = (
+            range(config.num_layers) 
+            if config.moe_layers == "all" 
+            else eval(config.moe_layers)
+        )
 
         self.layers = nn.ModuleList(
             [

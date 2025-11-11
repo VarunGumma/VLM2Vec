@@ -31,9 +31,10 @@ cd $PATH_TO_VLM2VEC_REPO
 
 
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 train.py \
-        --bf16 \
-        --lora \
-        --dora \
+        --bf16 True \
+        --tf32 True \
+        --lora True \
+        --dora True \
         --lora_r 1 \
         --lora_alpha 2 \
         --lora_dropout 0.0 \
@@ -52,6 +53,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
+        --optim "adamw_apex_fused" \
         --per_device_train_batch_size $PER_DEVICE_BS \
         --gradient_accumulation_steps $GRAD_ACC \
         --gc_q_chunk_size 8 \

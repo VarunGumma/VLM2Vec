@@ -30,6 +30,7 @@ from src.trainer import GradCacheLateProcessTrainer
 from src.utils.basic_utils import print_rank, print_master, find_latest_checkpoint
 from src.model.processor import load_processor, get_backbone_name
 
+torch.backends.cuda.matmul.allow_tf32 = True
 
 def main():
     # a hack for torch.distributed.launch: https://github.com/huggingface/transformers/issues/22171

@@ -10,6 +10,7 @@ from accelerate import skip_first_batches, DistributedType
 from transformers.trainer import Trainer, TRAINING_ARGS_NAME, TRAINER_STATE_NAME
 import torch.distributed as dist
 from typing import Optional
+from torch import amp
 import os
 import torch
 import math
@@ -45,7 +46,6 @@ from transformers.trainer_pt_utils import (
 from transformers.utils import (
     XLA_FSDPV2_MIN_VERSION,
     is_accelerate_available,
-    is_apex_available,
     is_torch_xla_available,
     logging,
     is_sagemaker_mp_enabled,
@@ -54,8 +54,6 @@ from transformers.utils import (
 from src.utils.basic_utils import batch_to_device
 from src.utils.basic_utils import print_master, print_rank
 
-if is_apex_available():
-    from apex import amp
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -142,7 +140,6 @@ class MMEBTrainer(Trainer):
         # override original trainer's method
         if self.train_dataset is None or not has_length(self.train_dataset):
             return None
-            return RandomSampler(self.train_dataset)
 
     def get_train_dataloader(self) -> DataLoader:
         """
