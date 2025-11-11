@@ -32,9 +32,12 @@ from src.model.biencoder_layer import BiEncoder
 from src.model.moe import load_balancing_loss_func
 
 try:
-    from liger_kernel.transformers import LigerCrossEntropyLoss as CrossEntropyLoss
+    from apex.contrib.xentropy import SoftmaxCrossEntropyLoss as CrossEntropyLoss
 except ImportError:
-    from torch.nn import CrossEntropyLoss
+    try:
+        from liger_kernel.transformers import LigerCrossEntropyLoss as CrossEntropyLoss
+    except ImportError:
+        from torch.nn import CrossEntropyLoss
 
 from src.model.baseline_backbone.colpali import ColPali
 from src.model.baseline_backbone.gme.gme_inference import GmeQwen2VL

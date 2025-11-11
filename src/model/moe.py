@@ -6,25 +6,8 @@ from typing import Optional, Union
 try:
     from liger_kernel.transformers import LigerSwiGLUMLP as MLP
 except ImportError:
-
-    class MLP(nn.Module):
-        def __init__(self, config):
-            super().__init__()
-            self.gate_proj = nn.Linear(
-                config.hidden_size, config.intermediate_size, bias=False
-            )
-            self.down_proj = nn.Linear(
-                config.intermediate_size, config.hidden_size, bias=False
-            )
-            self.up_proj = nn.Linear(
-                config.hidden_size, config.intermediate_size, bias=False
-            )
-
-        def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
-            return self.down_proj(
-                F.silu(self.up_proj(hidden_states)) * self.gate_proj(hidden_states)
-            )
-
+    from .mlp import MLP
+    
 
 def load_balancing_loss_func(
     gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],
