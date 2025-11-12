@@ -2,8 +2,8 @@
 echo "Python location: $(which python)"
 echo -e "Python version: $(python --version)\n"
 
-PATH_TO_VLM2VEC_REPO="/home/ubuntu/porialab-us-midwest-1/varun/vlm2vec2"
-PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
+PATH_TO_VLM2VEC_REPO="/scratch_aisg/peerat_main/VLM2Vec"
+PATH_TO_VLM2VEC_NFS="/scratch_aisg/peerat_main/VLM2Vec"
 NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
 
 GLOBAL_BS=1024
@@ -30,7 +30,7 @@ rm -rf $EXP_DIR/wandb/*
 cd $PATH_TO_VLM2VEC_REPO
 
 
-torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 train.py \
+uv run torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 train.py \
         --bf16 True \
         --tf32 True \
         --lora True \
@@ -53,7 +53,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
-        --optim "adamw_apex_fused" \
+        --optim "adamw_torch_fused" \
         --per_device_train_batch_size $PER_DEVICE_BS \
         --gradient_accumulation_steps $GRAD_ACC \
         --gc_q_chunk_size 8 \

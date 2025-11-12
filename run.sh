@@ -5,7 +5,7 @@
 #PBS -o /scratch_aisg/peerat_main/VLM2Vec/log-pbs/
 #PBS -e /scratch_aisg/peerat_main/VLM2Vec/log-pbs/
 #PBS -j oe
-#PBS -N Emd-CSE
+#PBS -N Qwen-2B
 #PBS -q AISG_large
 #PBS -l walltime=48:00:00
 
@@ -46,6 +46,6 @@ export CUDA_LAUNCH_BLOCKING=1
 export NCCL_IB_DISABLE=1  # Disable InfiniBand if causing issues
 export NCCL_P2P_DISABLE=1  # Disable P2P if causing issues
 
-uv pip install flash-attn --no-build-isolation 2>&1 | tee -a $LOG_FILE
+bash experiments/public/train/train_v2-qwen2vl-2B-series-S.sh 2>&1 | tee -a $LOG_FILE
 
 # torchrun --nproc_per_node=8 pre_training_training.py 2>&1 | tee -a $LOG_FILE
