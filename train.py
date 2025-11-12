@@ -26,11 +26,15 @@ from src.arguments import (
 from src.data.collator.train_collator import MultimodalDataCollator
 from src.data.loader.mixed_dataset import init_mixed_dataset
 from src.model.model import MMEBModel
-from src.trainer import GradCacheLateProcessTrainer
+from src.trainer import GradCacheLateProcessTrainer, MMEBTrainer
 from src.utils.basic_utils import print_rank, print_master, find_latest_checkpoint
 from src.model.processor import load_processor, get_backbone_name
+from transformers.training_args import OptimizerNames
+from transformers import is_apex_available
 
 torch.backends.cuda.matmul.allow_tf32 = True
+torch.backends.cudnn.allow_tf32 = True
+
 
 def main():
     # a hack for torch.distributed.launch: https://github.com/huggingface/transformers/issues/22171
@@ -138,7 +142,26 @@ def main():
         processor, model_args, data_args, training_args
     )
 
-    trainer_cls = GradCacheLateProcessTrainer
+    if is_apex_available():
+        if (
+            training_args.optim == OptimizerNames.ADAMW_TORCH
+            or training_args.optim == OptimizerNames.ADAMW_TORCH_FUSED
+        ):
+            training_args.optim = OptimizerNames.ADAMW_APEX_FUSED
+            print_master(
+                f"Apex is available. Upgrading optimizer to {training_args.optim} for better performance."
+            )
+    else:
+        if training_args.optim == OptimizerNames.ADAMW_TORCH:
+            training_args.optim = OptimizerNames.ADAMW_TORCH_FUSED
+            print_master(f"Upgrading optimizer to {training_args.optim}.")
+
+    trainer_cls = (
+        GradCacheLateProcessTrainer if training_args.grad_cache else MMEBTrainer
+    )
+    print_master(f"Using trainer class: {trainer_cls.__name__}")
+    print_master(f"Using optimizer: {training_args.optim}")
+
     trainer = trainer_cls(
         model=model,
         processing_class=processor,

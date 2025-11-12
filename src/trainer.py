@@ -3,7 +3,7 @@ import functools
 import shutil
 import sys
 import time
-from safetensors.torch import save_file
+import json
 
 from packaging import version
 from accelerate import skip_first_batches, DistributedType
@@ -22,10 +22,7 @@ from src.data.collator.train_collator import (
 from src.model.model import MMEBModel
 from src.loss import SimpleContrastiveLoss, DistributedContrastiveLoss
 from src.grad_cache.grad_cache import GradCache
-from torch.utils.data import (
-    DataLoader,
-    RandomSampler,
-)
+from torch.utils.data import DataLoader
 
 from transformers.training_args import OptimizerNames, ParallelMode
 from transformers.trainer_callback import (
@@ -52,8 +49,7 @@ from transformers.utils import (
 )
 
 from src.utils.basic_utils import batch_to_device
-from src.utils.basic_utils import print_master, print_rank
-
+from src.utils.basic_utils import print_master
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -72,6 +68,10 @@ logger = logging.get_logger(__name__)
 
 class MMEBTrainer(Trainer):
     def __init__(self, *args, **kwargs):
+        self.model_args = kwargs.pop("model_args", None)
+        self.max_length = kwargs.pop("max_length", 512)
+        self.has_lora = kwargs.pop("lora", False)
+
         super(MMEBTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
         self.processor = self.processing_class
@@ -108,33 +108,33 @@ class MMEBTrainer(Trainer):
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         os.makedirs(output_dir, exist_ok=True)
 
-        if state_dict is None:
-            state_dict = self.model.state_dict()
-        prefix = "encoder."
-        assert all(k.startswith(prefix) for k in state_dict.keys()), list(
-            state_dict.keys()
-        )
-        state_dict = {k[len(prefix) :]: v for k, v in state_dict.items()}
-        self.model.encoder.save_pretrained(
-            output_dir,
-            state_dict=state_dict,
-            safe_serialization=self.args.save_safetensors,
-        )
+        if self.has_lora:
+            self.model.encoder.save_pretrained(
+                os.path.join(output_dir, "adapters"),
+                safe_serialization=self.args.save_safetensors,
+            )
+        else:
+            self.model.save_pretrained(
+                output_dir, safe_serialization=self.args.save_safetensors
+            )
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
 
-        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-
         if self.model.aux_encoder is not None:
-            aux_encoder_fp = os.path.join(output_dir, "aux_encoder")
-            if self.args.save_safetensors:
-                save_file(
-                    self.model.aux_encoder.state_dict(),
-                    f"{aux_encoder_fp}.safetensors",
-                )
-            else:
-                torch.save(self.model.aux_encoder.state_dict(), f"{aux_encoder_fp}.bin")
+            torch.save(
+                self.model.aux_encoder.state_dict(),
+                os.path.join(output_dir, "aux_encoder.pth"),
+            )
+            with open(
+                os.path.join(output_dir, "aux_encoder_config.json"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                json.dump(self.model.aux_encoder_config.__dict__, f, indent=2)
+
+        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
+        self.model.encoder.config.to_json_file(os.path.join(output_dir, "config.json"))
 
     def _get_train_sampler(self) -> Optional[torch.utils.data.Sampler]:
         # override original trainer's method
@@ -800,12 +800,10 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
     """
 
     def __init__(self, *args, **kwargs):
-        self.max_length = kwargs.get("max_length", 512)
-        if "max_length" in kwargs:
-            del kwargs["max_length"]
-        self.model_args = kwargs.get("model_args", None)
-        if "model_args" in kwargs:
-            del kwargs["model_args"]
+        self.model_args = kwargs.pop("model_args", None)
+        self.max_length = kwargs.pop("max_length", 512)
+        self.has_lora = kwargs.pop("lora", False)
+
         super(GradCacheLateProcessTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
         self._dist_loss_scale_factor = dist.get_world_size() if self.is_ddp else 1
@@ -813,14 +811,12 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
             DistributedContrastiveLoss if self.is_ddp else SimpleContrastiveLoss
         )
         loss_fn = loss_fn_cls(temperature=self.model.temperature)
-        # process_fn = functools.partial(process_vlm_inputs_fns[self.args.model_backbone], processor=self.processing_class, max_length=self.max_length)
 
         self.gc = GradCache(
             models=[self.model, self.model],
             chunk_sizes=[self.args.gc_q_chunk_size, self.args.gc_p_chunk_size],
             loss_fn=loss_fn,
             split_input_fn=split_and_process_vlm_inputs,
-            # process_fn=process_fn,
             get_rep_fn=get_dense_rep,
             fp16=self.args.fp16,
             scaler=self.scaler if self.args.fp16 else None,
@@ -845,18 +841,27 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
         print_master(f"Saving model to {output_dir}")
         os.makedirs(output_dir, exist_ok=True)
 
-        if state_dict is None:
-            state_dict = self.model.state_dict()
-        prefix = "encoder."
-        assert all(k.startswith(prefix) for k in state_dict.keys()), list(
-            state_dict.keys()
-        )
-        state_dict = {k[len(prefix) :]: v for k, v in state_dict.items()}
-        self.model.encoder.save_pretrained(
-            output_dir,
-            state_dict=state_dict,
-            safe_serialization=self.args.save_safetensors,
-        )
+        if self.has_lora:
+            self.model.encoder.save_pretrained(
+                os.path.join(output_dir, "adapters"),
+                safe_serialization=self.args.save_safetensors,
+            )
+        else:
+            self.model.encoder.save_pretrained(
+                output_dir, safe_serialization=self.args.save_safetensors
+            )
+
+        if self.model.aux_encoder is not None:
+            torch.save(
+                self.model.aux_encoder.state_dict(),
+                os.path.join(output_dir, "aux_encoder.pth"),
+            )
+            with open(
+                os.path.join(output_dir, "aux_encoder_config.json"),
+                "w",
+                encoding="utf-8",
+            ) as f:
+                json.dump(self.model.aux_encoder_config.__dict__, f, indent=2)
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)

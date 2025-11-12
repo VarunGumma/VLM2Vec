@@ -33,18 +33,19 @@ cd $PATH_TO_VLM2VEC_REPO
 
 
 torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 train.py \
-        --bf16 \
-        --lora \
-        --dora \
+        --bf16 True \
+        --tf32 True \
+        --lora True \
+        --use_dora True \
         --lora_r 1 \
         --lora_alpha 2 \
         --lora_dropout 0.0 \
-        --lora-target-modules "qkv,proj,gate_proj,up_proj,down_proj,o_proj,k_proj,q_proj,v_proj" \
+        --lora-target-modules "all-linear" \
         --pooling mean \
         --normalize True \
         --temperature 0.02 \
         --dataloader_num_workers 16 \
-        --dataloader_persistent_workers \
+        --dataloader_persistent_workers True \
         --dataloader_pin_memory True \
         --dataloader_prefetch_factor 2 \
         --model_name $MODEL_NAME \
@@ -52,7 +53,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
-        --optim "adamw_apex_fused" \
         --gradient_checkpointing True \
         --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --per_device_train_batch_size $PER_DEVICE_BS \

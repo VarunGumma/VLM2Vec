@@ -26,8 +26,9 @@ from typing import List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.utils.checkpoint
-from torch.nn import CrossEntropyLoss, LayerNorm
+from torch.nn import LayerNorm
+
+# from torch.nn import CrossEntropyLoss
 
 from transformers.activations import ACT2FN
 from transformers.cache_utils import (

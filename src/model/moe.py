@@ -7,7 +7,7 @@ try:
     from liger_kernel.transformers import LigerSwiGLUMLP as MLP
 except ImportError:
     from .mlp import MLP
-    
+
 
 def load_balancing_loss_func(
     gate_logits: Union[torch.Tensor, tuple[torch.Tensor], None],

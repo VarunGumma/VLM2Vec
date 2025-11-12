@@ -29,11 +29,11 @@ class ModelArguments:
     temperature: float = field(
         default=0.02, metadata={"help": "temperature for softmax"}
     )
-    dora: bool = field(
+    use_dora: bool = field(
         default=False,
         metadata={"help": "do parameter-efficient fine-tuning with dora"},
     )
-    rslora: bool = field(
+    use_rslora: bool = field(
         default=False,
         metadata={"help": "do parameter-efficient fine-tuning with rslora"},
     )

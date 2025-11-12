@@ -34,18 +34,18 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --bf16 True \
         --tf32 True \
         --lora True \
-        --dora True \
+        --use_dora True \
         --lora_r 1 \
         --lora_alpha 2 \
         --lora_dropout 0.0 \
-        --lora-target-modules "qkv,proj,gate_proj,up_proj,down_proj,o_proj,k_proj,q_proj,v_proj" \
+        --lora-target-modules "all-linear" \
         --pooling mean \
         --normalize True \
         --temperature 0.02 \
         --gradient-checkpointing True \
         --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --dataloader_num_workers 16 \
-        --dataloader_persistent_workers \
+        --dataloader_persistent_workers True \
         --dataloader_pin_memory True \
         --dataloader_prefetch_factor 2 \
         --model_name $MODEL_NAME \
@@ -53,7 +53,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
-        --optim "adamw_apex_fused" \
         --per_device_train_batch_size $PER_DEVICE_BS \
         --gradient_accumulation_steps $GRAD_ACC \
         --gc_q_chunk_size 8 \
@@ -63,7 +62,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --learning_rate 5e-5 \
         --max_steps 5000 \
         --warmup_steps 100 \
-        --save_steps 50 \
+        --save_steps 3 \
         --logging_steps 1 \
         --save_safetensors True \
         --remove_unused_columns False \

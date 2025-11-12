@@ -5,7 +5,12 @@ import torch.distributed as dist
 from torch import nn, Tensor
 import torch.nn.functional as F
 from safetensors.torch import save_file
-from transformers import PreTrainedModel, AutoModelForCausalLM, AutoConfig, modeling_utils
+from transformers import (
+    PreTrainedModel,
+    AutoModelForCausalLM,
+    AutoConfig,
+    modeling_utils,
+)
 from peft import LoraConfig, get_peft_model, PeftModel
 from src.arguments import ModelArguments, AuxEncoderArguments
 from src.model.processor import (
@@ -32,12 +37,17 @@ from src.model.biencoder_layer import BiEncoder
 from src.model.moe import load_balancing_loss_func
 
 try:
-    from apex.contrib.xentropy import SoftmaxCrossEntropyLoss as CrossEntropyLoss
+    from src.monkey_patch import (
+        apply_liger_kernel_to_qwen2_vl,
+        apply_liger_kernel_to_qwen2_5_vl,
+    )
+
+    LIGER_PATCHER = {
+        QWEN2_VL: apply_liger_kernel_to_qwen2_vl,
+        QWEN2_5_VL: apply_liger_kernel_to_qwen2_5_vl,
+    }
 except ImportError:
-    try:
-        from liger_kernel.transformers import LigerCrossEntropyLoss as CrossEntropyLoss
-    except ImportError:
-        from torch.nn import CrossEntropyLoss
+    LIGER_PATCHER = None
 
 from src.model.baseline_backbone.colpali import ColPali
 from src.model.baseline_backbone.gme.gme_inference import GmeQwen2VL
@@ -71,7 +81,6 @@ class MMEBModel(nn.Module):
         self.normalize = normalize
         self.temperature = temperature
         self.is_ddp = dist.is_initialized()
-        self.cross_entropy = CrossEntropyLoss()
 
         if self.is_ddp:
             self.process_rank = dist.get_rank()
@@ -258,6 +267,12 @@ class MMEBModel(nn.Module):
                 dtype=torch.bfloat16,
             )
         elif model_backbone in [QWEN2_VL, QWEN2_5_VL, QWEN3_VL]:
+            if LIGER_PATCHER and model_backbone in LIGER_PATCHER:
+                LIGER_PATCHER[model_backbone]()
+                print_master(
+                    f"Applied Liger Kernel monkey patching for {model_backbone}"
+                )
+
             config._attn_implementation = "flash_attention_2"
             config.padding_side = "left"
             config.use_cache = False
@@ -297,13 +312,18 @@ class MMEBModel(nn.Module):
             )
 
         if model_args.lora:
+            target_modules = (
+                "all-linear"
+                if model_args.lora_target_modules == "all-linear"
+                else model_args.lora_target_modules.split(",")
+            )
             lora_config = LoraConfig(
                 r=model_args.lora_r,
                 lora_alpha=model_args.lora_alpha,
-                target_modules=model_args.lora_target_modules.split(","),
+                target_modules=target_modules,
                 lora_dropout=model_args.lora_dropout,
-                use_dora=model_args.dora,
-                use_rslora=model_args.rslora,
+                use_dora=model_args.use_dora,
+                use_rslora=model_args.use_rslora,
                 inference_mode=False,
                 init_lora_weights="gaussian",
                 task_type="FEATURE_EXTRACTION",
@@ -509,38 +529,38 @@ class MMEBModel(nn.Module):
             all_qry_reps = qry_reps
             all_tgt_reps = tgt_reps
 
-        loss += self._loss_fn(all_qry_reps, all_tgt_reps)
-        qry_dim = qry_reps.shape[-1]
+        tgt_per_qry = all_tgt_reps.size(0) // all_qry_reps.size(0)
+
+        target = torch.arange(
+            0,
+            all_qry_reps.size(0) * tgt_per_qry,
+            device=all_qry_reps.device,
+            dtype=torch.long,
+        )
+
+        dim = qry_reps.shape[-1]
+        loss = 0.0
 
         for d in [
-            qry_dim // 2,
-            qry_dim // 4,
-            qry_dim // 8,
-            qry_dim // 16,
-            qry_dim // 32,
-            qry_dim // 64,
+            dim,
+            dim // 2,
+            dim // 4,
+            dim // 8,
+            dim // 16,
+            dim // 32,
+            dim // 64,
         ]:
-            loss += self._loss_fn(all_qry_reps[:, :d], all_tgt_reps[:, :d])
+            loss += self._loss_fn(all_qry_reps, all_tgt_reps, target, dim=d)
 
-        if self.is_ddp:
-            loss = loss * self.world_size
-
-        return loss
+        return loss * (self.world_size if self.is_ddp else 1.0)
 
     def _dist_gather_tensor(self, t: Tensor):
         t = t.contiguous()
         all_tensors = [torch.empty_like(t) for _ in range(self.world_size)]
         dist.all_gather(all_tensors, t)
         all_tensors[self.process_rank] = t
-        all_tensors = torch.cat(all_tensors, dim=0)
-        return all_tensors
+        return torch.cat(all_tensors, dim=0)
 
-    def compute_similarity(self, q_reps, p_reps):
-        return torch.matmul(q_reps, p_reps.transpose(0, 1))
-
-    def _loss_fn(self, q: Tensor, t: Tensor) -> Tensor:
-        scores = self.compute_similarity(q, t)
-        scores = scores.view(q.size(0), -1)
-        target = torch.arange(scores.size(0), device=scores.device, dtype=torch.long)
-        target = target * (q.size(0) // t.size(0))
-        return self.cross_entropy(scores / self.temperature, target)
+    def _loss_fn(self, q: Tensor, t: Tensor, target: Tensor, dim: int = None) -> Tensor:
+        logits = torch.matmul(q[:, :dim], t[:, :dim].transpose(0, 1))
+        return F.cross_entropy(logits / self.temperature, target)

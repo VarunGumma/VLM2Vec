@@ -9,12 +9,9 @@ except ImportError:
     from .mlp import MLP
 
 try:
-    from apex.normalization import FusedRMSNorm as RMSNorm
+    from liger_kernel.transformers import LigerRMSNorm as RMSNorm
 except ImportError:
-    try:
-        from liger_kernel.transformers import LigerRMSNorm as RMSNorm
-    except ImportError:
-        from torch.nn import RMSNorm
+    from torch.nn import RMSNorm
 
 
 class MultiheadAttention(nn.Module):
@@ -196,8 +193,8 @@ class BiEncoder(nn.Module):
         )
 
         moe_layers = (
-            range(config.num_layers) 
-            if config.moe_layers == "all" 
+            range(config.num_layers)
+            if config.moe_layers == "all"
             else eval(config.moe_layers)
         )
 
