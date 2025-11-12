@@ -4,7 +4,6 @@ import os
 import torch.distributed as dist
 from torch import nn, Tensor
 import torch.nn.functional as F
-from safetensors.torch import save_file
 from transformers import (
     PreTrainedModel,
     AutoModelForCausalLM,
@@ -34,7 +33,6 @@ from src.model.processor import (
 )
 
 from src.model.biencoder_layer import BiEncoder
-from src.model.moe import load_balancing_loss_func
 
 try:
     from src.monkey_patch import (
@@ -175,40 +173,15 @@ class MMEBModel(nn.Module):
                     x = hidden_states.hidden_states[-1]
                     decoder_outputs = None
 
-                hidden_states = self._aux_forward(
+                hidden_states = self.aux_encoder(
                     x, decoder_outputs, input["attention_mask"]
                 )
-
-                if isinstance(hidden_states, tuple):
-                    hidden_states, router_loss = hidden_states
             else:
                 hidden_states = hidden_states.hidden_states[-1]
 
             pooled_output = self._pooling(hidden_states, input["attention_mask"])
-            return (
-                (pooled_output, router_loss)
-                if (self.aux_encoder is not None and self.aux_encoder_config.use_moe)
-                else pooled_output
-            )
 
-    def _aux_forward(
-        self, x: Tensor, decoder_outputs: Tensor = None, attn_mask: Tensor = None
-    ):
-        if self.aux_encoder_config.use_moe:
-            x, router_logits = self.aux_encoder(
-                x, decoder_outputs=decoder_outputs, attn_mask=attn_mask
-            )
-            router_loss = load_balancing_loss_func(
-                router_logits,
-                attn_mask=attn_mask,
-                num_experts=self.aux_encoder_config.num_experts,
-                top_k=self.aux_encoder_config.num_experts_per_tok,
-            )
-            return x, router_loss
-        else:
-            return self.aux_encoder(
-                x, decoder_outputs=decoder_outputs, attn_mask=attn_mask
-            )
+        return pooled_output
 
     def _pooling(self, last_hidden_state, attention_mask):
         if self.pooling == "none":
@@ -242,7 +215,7 @@ class MMEBModel(nn.Module):
     @classmethod
     def build(cls, model_args: ModelArguments, **kwargs):
         config = AutoConfig.from_pretrained(
-            model_args.model_name, trust_remote_code=True
+            model_args.model_name,
         )
         model_backbone = get_backbone_name(hf_config=config)
         print_master(
@@ -304,11 +277,10 @@ class MMEBModel(nn.Module):
             config.use_cache = False
             base_model = cls.TRANSFORMER_CLS.from_pretrained(
                 model_args.model_name,
-                **kwargs,
                 config=config,
                 dtype=torch.bfloat16,
-                trust_remote_code=True,
                 attn_implementation="flash_attention_2",
+                **kwargs,
             )
 
         if model_args.lora:
@@ -371,7 +343,7 @@ class MMEBModel(nn.Module):
             if model_args.checkpoint_path
             else model_args.model_name
         )
-        config = AutoConfig.from_pretrained(model_name_or_path, trust_remote_code=True)
+        config = AutoConfig.from_pretrained(model_name_or_path)
         if not hasattr(model_args, "model_backbone") or not model_args.model_backbone:
             model_backbone = get_backbone_name(
                 hf_config=config, model_type=model_args.model_type
@@ -390,9 +362,7 @@ class MMEBModel(nn.Module):
             QWEN2_5_VL_TOKENSELECTION,
             E5_V,
         }:
-            config = AutoConfig.from_pretrained(
-                model_args.model_name, trust_remote_code=True
-            )
+            config = AutoConfig.from_pretrained(model_args.model_name)
             config._attn_implementation = "flash_attention_2"
             config.vision_config._attn_implementation = "flash_attention_2"
             base_model = backbone2model[model_args.model_backbone].from_pretrained(
@@ -401,30 +371,24 @@ class MMEBModel(nn.Module):
                 config=config,
             )
         elif model_args.model_backbone == PHI3V:
-            config = AutoConfig.from_pretrained(
-                model_args.model_name, trust_remote_code=True
-            )
+            config = AutoConfig.from_pretrained(model_args.model_name)
             config.use_cache = False
             config.padding_side = "right"
             base_model = Phi3VForCausalLM.from_pretrained(
                 model_args.model_name,
-                **kwargs,
                 config=config,
                 torch_dtype=torch.bfloat16,
-                trust_remote_code=True,
+                **kwargs,
             )
             base_model.padding_side = "right"
         elif model_args.model_backbone == INTERNVIDEO2:
             print_master(
                 f'Loading backbone [{model_args.model_backbone}] from {"src/model/vlm_backbone/internvideo2/"}'
             )
-            config = AutoConfig.from_pretrained(
-                "src/model/vlm_backbone/internvideo2/", trust_remote_code=True
-            )
+            config = AutoConfig.from_pretrained("src/model/vlm_backbone/internvideo2/")
             base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 "src/model/vlm_backbone/internvideo2/",
                 config=config,
-                trust_remote_code=True,
             )
         elif model_args.model_backbone == GME:
             base_model = GmeQwen2VL(
@@ -442,16 +406,13 @@ class MMEBModel(nn.Module):
             setattr(base_model, "config", config)
         else:
             # Loading external base model from HF
-            config = AutoConfig.from_pretrained(
-                model_args.model_name, trust_remote_code=True
-            )
+            config = AutoConfig.from_pretrained(model_args.model_name)
             config.use_cache = False
             base_model = cls.TRANSFORMER_CLS.from_pretrained(
                 model_name_or_path,
-                **kwargs,
                 config=config,
                 torch_dtype=torch.bfloat16,
-                trust_remote_code=True,
+                **kwargs,
             )
 
         # Building the model on top of the base
@@ -487,11 +448,16 @@ class MMEBModel(nn.Module):
         return model
 
     def save(self, output_dir: str):
-        self.encoder.save_pretrained(output_dir, safe_serialization=True)
+        if self.model_args.lora:
+            self.encoder.save_pretrained(
+                os.path.join(output_dir, "adapters"), safe_serialization=True
+            )
+        else:
+            self.encoder.save_pretrained(output_dir, safe_serialization=True)
         if self.aux_encoder is not None:
-            save_file(
+            torch.save(
                 self.aux_encoder.state_dict(),
-                os.path.join(output_dir, "aux_encoder.safetensors"),
+                os.path.join(output_dir, "aux_encoder.pth"),
             )
 
     def forward(
@@ -501,23 +467,8 @@ class MMEBModel(nn.Module):
         *args,
         **kwargs,
     ):
-        loss = 0.0
-
-        if qry is not None:
-            qry_reps = self.encode_input(qry)
-            if isinstance(qry_reps, tuple):
-                qry_reps, qry_router_loss = qry_reps
-                loss += qry_router_loss
-        else:
-            qry_reps = None
-
-        if tgt is not None:
-            tgt_reps = self.encode_input(tgt)
-            if isinstance(tgt_reps, tuple):
-                tgt_reps, tgt_router_loss = tgt_reps
-                loss += tgt_router_loss
-        else:
-            tgt_reps = None
+        qry_reps = self.encode_input(qry) if qry is not None else None
+        tgt_reps = self.encode_input(tgt) if tgt is not None else None
 
         if qry_reps is None or tgt_reps is None:
             return {"qry_reps": qry_reps, "tgt_reps": tgt_reps}
@@ -538,8 +489,7 @@ class MMEBModel(nn.Module):
             dtype=torch.long,
         )
 
-        dim = qry_reps.shape[-1]
-        loss = 0.0
+        dim, loss = qry_reps.shape[-1], 0.0
 
         for d in [
             dim,

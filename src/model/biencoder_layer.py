@@ -1,6 +1,6 @@
+import torch
 import torch.nn as nn
 from einops import rearrange
-from .moe import SparseMoE
 import torch.nn.functional as F
 
 try:
@@ -54,7 +54,7 @@ class MultiheadAttention(nn.Module):
         q, k, v = self._rearrange(q, k, v)
 
         attn_mask_expanded = (
-            self._expand_mask((attn_mask == 0)) if attn_mask is not None else None
+            self._expand_mask(attn_mask.to(torch.bool)) if attn_mask is not None else None
         )
 
         x = F.scaled_dot_product_attention(
@@ -139,10 +139,8 @@ class BiEncoderLayer(nn.Module):
             x_v is None
         ), "x_k and x_v must be both None or both not None"
 
-        if x_k is None:
+        if x_k is None and x_v is None:
             x_k = x_q
-
-        if x_v is None:
             x_v = x_q
 
         return residual + self.attn(x_q, x_k, x_v, attn_mask=attn_mask)
@@ -152,18 +150,6 @@ class BiEncoderLayer(nn.Module):
 
     def forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
         return self._mlp_forward(self._attn_forward(x_q, x_k, x_v, attn_mask=attn_mask))
-
-
-class BiEncoderLayerMoE(BiEncoderLayer):
-    def __init__(self, config):
-        super().__init__(config=config)
-        self.mlp = SparseMoE(config)
-
-    def _mlp_forward(self, x):
-        residual = x
-        x, router_logits = self.mlp(self.mlp_norm(x))
-        x = x + residual
-        return x, router_logits
 
 
 class BiEncoder(nn.Module):
@@ -192,21 +178,8 @@ class BiEncoder(nn.Module):
             else None
         )
 
-        moe_layers = (
-            range(config.num_layers)
-            if config.moe_layers == "all"
-            else eval(config.moe_layers)
-        )
-
         self.layers = nn.ModuleList(
-            [
-                (
-                    BiEncoderLayerMoE(config)
-                    if (config.use_moe and (i + 1) in moe_layers)
-                    else BiEncoderLayer(config)
-                )
-                for i in range(config.num_layers)
-            ]
+            [BiEncoderLayer(config) for _ in range(config.num_layers)]
         )
 
     def forward(self, x, decoder_outputs=None, attn_mask=None):
@@ -226,16 +199,11 @@ class BiEncoder(nn.Module):
             ), "decoder_outputs should not be provided for non-parallel encoder"
             decoder_outputs = [None] * len(self.layers)
 
-        router_logits = []
-
         for layer, d_out in zip(self.layers, decoder_outputs):
             x_kv = d_out if self.config.parallel_encoder else x
             x = layer(x, x_kv, x_kv, attn_mask=attn_mask)
-            if isinstance(x, tuple):
-                x, rl = x
-                router_logits.append(rl)
 
         if self.out_proj is not None:
             x = self.out_proj(x)
 
-        return (x, router_logits) if len(router_logits) > 0 else x
+        return x

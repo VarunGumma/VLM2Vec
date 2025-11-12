@@ -183,8 +183,7 @@ class GradCache:
         :param loss_kwargs: Keyword arguments input to the loss function.
         :return: the loss tensor.
         """
-        loss = self.loss_fn(*reps, **loss_kwargs)
-        return loss
+        return self.loss_fn(*reps, **loss_kwargs)
 
     def forward_no_grad(
         self,

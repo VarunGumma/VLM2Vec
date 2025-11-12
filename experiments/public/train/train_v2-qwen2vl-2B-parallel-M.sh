@@ -1,6 +1,4 @@
 #!/bin/bash
-export CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6
-
 echo "Python location: $(which python)"
 echo -e "Python version: $(python --version)\n"
 
@@ -14,7 +12,7 @@ GRAD_ACC=$((GLOBAL_BS / (NUM_GPUS * PER_DEVICE_BS)))
 
 MASTER_PORT=54321
 MODEL_NAME="Qwen/Qwen2-VL-2B-Instruct"
-CONFIG_YAML="experiments/public/train/train_alltasks.yaml"
+CONFIG_YAML="experiments/public/train/train_alltasks_lambda.yaml"
 
 echo "Using ${NUM_GPUS} GPUs with gradient accumulation steps ${GRAD_ACC}"
 echo "Effective batch size: $((NUM_GPUS * PER_DEVICE_BS * GRAD_ACC))"
@@ -53,6 +51,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --run_name $EXP_NAME \
         --output_dir $EXP_DIR \
         --grad_cache True \
+        --max_grad_norm 1.0 \
         --gradient_checkpointing True \
         --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --per_device_train_batch_size $PER_DEVICE_BS \

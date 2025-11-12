@@ -122,22 +122,6 @@ class AuxEncoderArguments:
             "help": "the number of key-value attention heads for GQA attention mechanism in the aux encoder"
         },
     )
-    use_moe: bool = field(
-        default=False,
-        metadata={"help": "whether to use Mixture of Experts in the aux encoder"},
-    )
-    moe_layers: str = field(
-        default="[]",
-        metadata={
-            "help": "the layer indices to apply Mixture of Experts in the aux encoder"
-        },
-    )
-    num_experts: int = field(
-        default=None, metadata={"help": "the number of experts in the mixture"}
-    )
-    num_experts_per_tok: int = field(
-        default=None, metadata={"help": "the number of experts per token"}
-    )
     backbone_model_hidden_size: int = field(
         default=2048,
         metadata={
