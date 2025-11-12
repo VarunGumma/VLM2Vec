@@ -62,7 +62,7 @@ uv run torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_rest
         --learning_rate 5e-5 \
         --max_steps 5000 \
         --warmup_steps 100 \
-        --save_steps 3 \
+        --save_steps 50 \
         --logging_steps 1 \
         --save_safetensors True \
         --remove_unused_columns False \
