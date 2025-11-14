@@ -7,7 +7,7 @@ echo "Python location: $(which python)"
 echo "Python version: $(python --version)"
 echo ""
 
-PATH_TO_VLM2VEC_REPO="/home/ubuntu/porialab-us-midwest-1/varun/vlm2vec2"
+PATH_TO_VLM2VEC_REPO="/home/ubuntu/varun/vlm2vec2"
 PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
 CONFIG_DIR="experiments/public/eval"
 

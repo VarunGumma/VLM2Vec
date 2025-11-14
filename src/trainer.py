@@ -111,8 +111,8 @@ class MMEBTrainer(Trainer):
             output_dir, safe_serialization=self.args.save_safetensors
         )
 
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
+        if self.processor is not None:
+            self.processor.save_pretrained(output_dir)
 
         if self.model.aux_encoder is not None:
             ckpt_path = os.path.join(output_dir, "aux_encoder.pth")

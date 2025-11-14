@@ -123,7 +123,6 @@ def main():
     print_master(f"model_backbone: {model_backbone}")
 
     processor = load_processor(model_args, data_args)
-    processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
     setattr(model, "processor", processor)
 
     with open(data_args.dataset_config, "r") as yaml_file:

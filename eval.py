@@ -124,7 +124,7 @@ def encode_embeddings(
         padded_embeds = []
         for reps_batch in local_embeds:
             if reps_batch.dim() == 3:
-                B, L, H = reps_batch.shape
+                L = reps_batch.shape[1]
                 padding_size = global_max_len - L
                 padded_batch = F.pad(reps_batch, (0, 0, 0, padding_size), "constant", 0)
                 padded_embeds.append(padded_batch)
@@ -233,9 +233,6 @@ def main():
     if local_rank != 0:
         print_rank(f"Loading the model from cache...")
         processor = load_processor(model_args, data_args)
-        processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
-            True
-        )
         time.sleep(random.randint(2 * local_rank, 3 * local_rank))
         model = MMEBModel.load(
             model_args,
@@ -247,8 +244,8 @@ def main():
 
     model = model.to(training_args.device, dtype=torch.bfloat16)
 
-    with open(data_args.dataset_config, "r", encoding="utf-8") as yaml_file:
-        dataset_configs = yaml.safe_load(yaml_file)
+    with open(data_args.dataset_config, "r", encoding="utf-8") as f:
+        dataset_configs = yaml.safe_load(f)
 
     # --- Main Evaluation Loop ---
     for dataset_name, task_config in dataset_configs.items():
@@ -352,8 +349,7 @@ def main():
                 with open(query_embed_path, "wb", encoding="utf-8") as f:
                     pickle.dump(query_embeds, f)
                 with open(dataset_info_path, "w", encoding="utf-8") as f:
-                    for info in gt_infos:
-                        f.write(json.dumps(info) + "\n")
+                    f.write("\n".join([json.dumps(i) for i in gt_infos]) + "\n")
                 print_master(f"Saved query embeddings to {query_embed_path}")
 
             if dist.is_initialized():
@@ -404,7 +400,7 @@ def main():
             )
             if os.path.exists(score_path):
                 try:
-                    with open(score_path, "r") as f:
+                    with open(score_path, "r", encoding="utf-8") as f:
                         score_dict = json.load(f)
                     print_master(
                         f"Score of {dataset_name} (loaded from previous run): {score_path}"
@@ -535,9 +531,7 @@ def main():
             with open(score_path, "w", encoding="utf-8") as f:
                 json.dump(score_dict, f, indent=4)
             with open(pred_path, "w", encoding="utf-8") as f:
-                for pred in pred_dicts:
-                    f.write(json.dumps(pred) + "\n")
-
+                f.write("\n".join([json.dumps(p) for p in pred_dicts]) + "\n")
 
 if __name__ == "__main__":
     main()
