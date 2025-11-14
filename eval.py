@@ -19,7 +19,12 @@ from transformers import HfArgumentParser, AutoConfig
 from datasets import Dataset, concatenate_datasets
 from datasets.distributed import split_dataset_by_node
 
-from src.arguments import ModelArguments, DataArguments, TrainingArguments
+from src.arguments import (
+    ModelArguments,
+    DataArguments,
+    TrainingArguments,
+    AuxEncoderArguments,
+)
 from src.data.collator.eval_collator import MultimodalEvalDataCollator
 from src.data.eval_dataset.base_eval_dataset import (
     AutoEvalPairDataset,
@@ -74,7 +79,7 @@ def encode_embeddings(
     local_max_len = 0
 
     model.eval()
-    with torch.no_grad():
+    with torch.inference_mode():
         for inputs, dataset_info in tqdm(
             loader, desc=f"{description} (rank {local_rank})", disable=local_rank > 0
         ):
@@ -157,6 +162,7 @@ def encode_embeddings(
 def main():
     if "RANK" in os.environ and dist.is_available() and not dist.is_initialized():
         dist.init_process_group(backend="nccl", timeout=datetime.timedelta(minutes=60))
+
     local_rank = dist.get_rank() if dist.is_initialized() else 0
     world_size = dist.get_world_size() if dist.is_initialized() else 1
     # DEBUG PRINTS for Distributed Setup
@@ -166,6 +172,7 @@ def main():
     print_master(f"WORLD_SIZE: {os.environ.get('WORLD_SIZE')}")
     print_master(f"MASTER_ADDR: {os.environ.get('MASTER_ADDR')}")
     print_master(f"MASTER_PORT: {os.environ.get('MASTER_PORT')}")
+
     if dist.is_initialized():
         print_rank(f"dist.get_rank(): {dist.get_rank()}")
         print_rank(f"dist.get_world_size(): {dist.get_world_size()}")
@@ -176,32 +183,48 @@ def main():
             sys.argv.remove(arg)
             sys.argv.append("--local_rank")
             sys.argv.append(rank)
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    parser = HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments, AuxEncoderArguments)
+    )
+    model_args, data_args, training_args, aux_encoder_args = (
+        parser.parse_args_into_dataclasses()
+    )
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
     os.makedirs(data_args.encode_output_path, exist_ok=True)
 
+    if not model_args.add_aux_encoder:
+        aux_encoder_args = None
+
     # --- Model Loading ---
-    hf_config = AutoConfig.from_pretrained(
-        model_args.model_name, trust_remote_code=True
-    )
+    hf_config = AutoConfig.from_pretrained(model_args.model_name)
     if not getattr(model_args, "model_backbone", None):
         model_backbone = get_backbone_name(
             hf_config=hf_config, model_type=model_args.model_type
         )
         setattr(model_args, "model_backbone", model_backbone)
         setattr(training_args, "model_backbone", model_backbone)
+
     print_master(f"Model Backbone: {model_args.model_backbone}")
     # --- DDP-Safe Model Loading ---
     # Step 1: Only the master process (rank 0) downloads the model.
     if local_rank == 0:
         processor = load_processor(model_args, data_args)
-        model = MMEBModel.load(model_args, is_trainable=False, processor=processor)
+        processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            True
+        )
+        model = MMEBModel.load(
+            model_args,
+            aux_encoder_args,
+            is_trainable=False,
+            processor=processor,
+        )
         print_master(
             f"[rank=0] Loading the model from Huggingface: {model_args.model_name}..."
         )
+        print(f"Loaded model: {model} on local_rank {local_rank}")
     # Step 2: All processes wait here. The non-master processes will pause
     # until the master process (rank 0) finishes downloading and exits this barrier.
     if torch.distributed.is_initialized():
@@ -210,20 +233,30 @@ def main():
     if local_rank != 0:
         print_rank(f"Loading the model from cache...")
         processor = load_processor(model_args, data_args)
+        processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
+            True
+        )
         time.sleep(random.randint(2 * local_rank, 3 * local_rank))
-        model = MMEBModel.load(model_args, is_trainable=False, processor=processor)
-    model.eval()
+        model = MMEBModel.load(
+            model_args,
+            aux_encoder_args,
+            is_trainable=False,
+            processor=processor,
+        )
+        print(f"Loaded model: {model} on local_rank {local_rank}")
+
     model = model.to(training_args.device, dtype=torch.bfloat16)
-    with open(data_args.dataset_config, "r") as yaml_file:
+
+    with open(data_args.dataset_config, "r", encoding="utf-8") as yaml_file:
         dataset_configs = yaml.safe_load(yaml_file)
 
     # --- Main Evaluation Loop ---
-    for dataset_idx, (dataset_name, task_config) in enumerate(dataset_configs.items()):
+    for dataset_name, task_config in dataset_configs.items():
         # 0. load dataset
         if dist.is_initialized():
             dist.barrier()
-        print_master(f"--- Evaluating {dataset_name} ---")
 
+        print_master(f"--- Evaluating {dataset_name} ---")
         query_embed_path = os.path.join(
             data_args.encode_output_path, f"{dataset_name}_qry"
         )
@@ -288,12 +321,8 @@ def main():
                 print_master(
                     f"Failed to load dataset {dataset_name}, skipping {dataset_name}"
                 )
-                import traceback
-
-                traceback.print_exc()
                 print_master(e)
                 raise e
-                continue
 
         # --- 1. Compute Query Embeddings ---
         if do_query:
@@ -316,17 +345,17 @@ def main():
                 encode_side="qry",
                 description=f"Queries for {dataset_name}",
             )
-            query_embeds = query_embeds[
-                : len(full_eval_qry_dataset)
-            ]  # world_size>1, trim the padded data points
+            query_embeds = query_embeds[: len(full_eval_qry_dataset)]
             gt_infos = gt_infos[: len(full_eval_qry_dataset)]
+
             if local_rank == 0:
-                with open(query_embed_path, "wb") as f:
+                with open(query_embed_path, "wb", encoding="utf-8") as f:
                     pickle.dump(query_embeds, f)
-                with open(dataset_info_path, "w") as f:
+                with open(dataset_info_path, "w", encoding="utf-8") as f:
                     for info in gt_infos:
                         f.write(json.dumps(info) + "\n")
                 print_master(f"Saved query embeddings to {query_embed_path}")
+
             if dist.is_initialized():
                 dist.barrier()
 
@@ -361,7 +390,7 @@ def main():
                 cand_embed_dict = {
                     cand_id: embed for cand_id, embed in zip(all_cand_ids, cand_embeds)
                 }
-                with open(cand_embed_path, "wb") as f:
+                with open(cand_embed_path, "wb", encoding="utf-8") as f:
                     pickle.dump(cand_embed_dict, f)
                 print_master(f"Saved candidate embeddings to {cand_embed_path}")
 
@@ -387,11 +416,13 @@ def main():
                     print_master(
                         f"Failed to load score for {dataset_name}, skipping {dataset_name}"
                     )
-            with open(query_embed_path, "rb") as f:
+            with open(query_embed_path, "rb", encoding="utf-8") as f:
                 qry_embeds = pickle.load(f)
-            with open(cand_embed_path, "rb") as f:
+            with open(cand_embed_path, "rb", encoding="utf-8") as f:
                 cand_embed_dict = pickle.load(f)
-            gt_infos = [json.loads(l) for l in open(dataset_info_path)]
+            with open(dataset_info_path, "r", encoding="utf-8") as f:
+                gt_infos = [json.loads(l) for l in f]
+
             pred_dicts = []
 
             rank_against_all_candidates = (
@@ -496,12 +527,14 @@ def main():
             formatted = {k: f"{v:.4f}" for k, v in score_dict.items()}
             score_dict["num_pred"] = len(pred_dicts)
             score_dict["num_data"] = len(gt_infos)
+
             print_master(f"Score of {dataset_name}:")
             print_master(formatted)
             print_master(f"Outputting final score to: {score_path}")
-            with open(score_path, "w") as f:
+
+            with open(score_path, "w", encoding="utf-8") as f:
                 json.dump(score_dict, f, indent=4)
-            with open(pred_path, "w") as f:
+            with open(pred_path, "w", encoding="utf-8") as f:
                 for pred in pred_dicts:
                     f.write(json.dumps(pred) + "\n")
 

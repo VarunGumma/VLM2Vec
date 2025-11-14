@@ -70,7 +70,6 @@ class MMEBTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         self.model_args = kwargs.pop("model_args", None)
         self.max_length = kwargs.pop("max_length", 512)
-        self.has_lora = kwargs.pop("lora", False)
 
         super(MMEBTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
@@ -108,29 +107,19 @@ class MMEBTrainer(Trainer):
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         os.makedirs(output_dir, exist_ok=True)
 
-        if self.has_lora:
-            self.model.encoder.save_pretrained(
-                os.path.join(output_dir, "adapters"),
-                safe_serialization=self.args.save_safetensors,
-            )
-        else:
-            self.model.save_pretrained(
-                output_dir, safe_serialization=self.args.save_safetensors
-            )
+        self.model.save_pretrained(
+            output_dir, safe_serialization=self.args.save_safetensors
+        )
 
         if self.tokenizer is not None:
             self.tokenizer.save_pretrained(output_dir)
 
         if self.model.aux_encoder is not None:
-            torch.save(
-                self.model.aux_encoder.state_dict(),
-                os.path.join(output_dir, "aux_encoder.pth"),
-            )
-            with open(
-                os.path.join(output_dir, "aux_encoder_config.json"),
-                "w",
-                encoding="utf-8",
-            ) as f:
+            ckpt_path = os.path.join(output_dir, "aux_encoder.pth")
+            cfg_path = os.path.join(output_dir, "aux_encoder_config.json")
+
+            torch.save(self.model.aux_encoder.state_dict(), ckpt_path)
+            with open(cfg_path, "w", encoding="utf-8") as f:
                 json.dump(self.model.aux_encoder_config.__dict__, f, indent=2)
 
         torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
@@ -836,35 +825,3 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
         else:
             loss = model(queries, targets)
         return loss / self._dist_loss_scale_factor
-
-    def _save(self, output_dir: Optional[str] = None, state_dict=None):
-        print_master(f"Saving model to {output_dir}")
-        os.makedirs(output_dir, exist_ok=True)
-
-        if self.has_lora:
-            self.model.encoder.save_pretrained(
-                os.path.join(output_dir, "adapters"),
-                safe_serialization=self.args.save_safetensors,
-            )
-        else:
-            self.model.encoder.save_pretrained(
-                output_dir, safe_serialization=self.args.save_safetensors
-            )
-
-        if self.model.aux_encoder is not None:
-            torch.save(
-                self.model.aux_encoder.state_dict(),
-                os.path.join(output_dir, "aux_encoder.pth"),
-            )
-            with open(
-                os.path.join(output_dir, "aux_encoder_config.json"),
-                "w",
-                encoding="utf-8",
-            ) as f:
-                json.dump(self.model.aux_encoder_config.__dict__, f, indent=2)
-
-        if self.tokenizer is not None:
-            self.tokenizer.save_pretrained(output_dir)
-
-        torch.save(self.args, os.path.join(output_dir, TRAINING_ARGS_NAME))
-        self.model.encoder.config.to_json_file(os.path.join(output_dir, "config.json"))

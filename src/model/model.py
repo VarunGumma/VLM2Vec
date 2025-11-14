@@ -1,6 +1,7 @@
 from typing import Dict, Optional
 import torch
 import os
+import json
 import torch.distributed as dist
 from torch import nn, Tensor
 import torch.nn.functional as F
@@ -11,6 +12,7 @@ from transformers import (
     modeling_utils,
 )
 from peft import LoraConfig, get_peft_model, PeftModel
+from src.model.biencoder.transformer import BiEncoder
 from src.arguments import ModelArguments, AuxEncoderArguments
 from src.model.processor import (
     get_backbone_name,
@@ -31,8 +33,6 @@ from src.model.processor import (
     LamRA_QWEN2_5,
     COLPALI,
 )
-
-from src.model.biencoder_layer import BiEncoder
 
 try:
     from src.monkey_patch import (
@@ -213,7 +213,12 @@ class MMEBModel(nn.Module):
         return reps
 
     @classmethod
-    def build(cls, model_args: ModelArguments, **kwargs):
+    def build(
+        cls,
+        model_args: ModelArguments,
+        aux_encoder_args: AuxEncoderArguments = None,
+        **kwargs,
+    ):
         config = AutoConfig.from_pretrained(
             model_args.model_name,
         )
@@ -314,6 +319,13 @@ class MMEBModel(nn.Module):
                 normalize=model_args.normalize,
                 temperature=model_args.temperature,
             )
+
+        if model_args.add_aux_encoder:
+            assert (
+                aux_encoder_args is not None
+            ), "Aux encoder args must be provided when add_aux_encoder is True."
+            model._build_aux_encoder(aux_encoder_args)
+
         return model
 
     def gradient_checkpointing_enable(
@@ -328,7 +340,7 @@ class MMEBModel(nn.Module):
             gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
         )
 
-    def build_aux_encoder(
+    def _build_aux_encoder(
         self,
         model_args: AuxEncoderArguments,
     ):
@@ -336,7 +348,13 @@ class MMEBModel(nn.Module):
         self.aux_encoder = BiEncoder(model_args)
 
     @classmethod
-    def load(cls, model_args: ModelArguments, is_trainable=True, **kwargs):
+    def load(
+        cls,
+        model_args: ModelArguments,
+        aux_encoder_args: AuxEncoderArguments = None,
+        is_trainable=True,
+        **kwargs,
+    ):
         # Loading the base model
         model_name_or_path = (
             model_args.checkpoint_path
@@ -445,20 +463,26 @@ class MMEBModel(nn.Module):
             )
 
         model.model_backbone = model_args.model_backbone
+
+        if model_args.add_aux_encoder:
+            if aux_encoder_args is None:
+                cfg_path = os.path.join(model_name_or_path, "aux_encoder_config.json")
+                if not os.path.exists(cfg_path):
+                    raise ValueError(
+                        f"Aux Encoder Config not provided and default config file not found at {cfg_path}"
+                    )
+                with open(cfg_path, "r", encoding="utf-8") as f:
+                    args = AuxEncoderArguments(**json.load(f))
+                    model._build_aux_encoder(args)
+
         return model
 
     def save(self, output_dir: str):
-        if self.model_args.lora:
-            self.encoder.save_pretrained(
-                os.path.join(output_dir, "adapters"), safe_serialization=True
-            )
-        else:
-            self.encoder.save_pretrained(output_dir, safe_serialization=True)
+        os.makedirs(output_dir, exist_ok=True)
+        self.encoder.save_pretrained(output_dir, safe_serialization=True)
         if self.aux_encoder is not None:
-            torch.save(
-                self.aux_encoder.state_dict(),
-                os.path.join(output_dir, "aux_encoder.pth"),
-            )
+            ckpt_path = os.path.join(output_dir, "aux_encoder.pth")
+            torch.save(self.aux_encoder.state_dict(), ckpt_path)
 
     def forward(
         self,

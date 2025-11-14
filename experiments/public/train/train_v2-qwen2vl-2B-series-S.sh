@@ -1,7 +1,4 @@
 #!/bin/bash
-echo "Python location: $(which python)"
-echo -e "Python version: $(python --version)\n"
-
 PATH_TO_VLM2VEC_REPO="/scratch_aisg/peerat_main/VLM2Vec"
 PATH_TO_VLM2VEC_NFS="/scratch_aisg/peerat_main/VLM2Vec"
 NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
@@ -62,6 +59,7 @@ uv run torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_rest
         --learning_rate 5e-5 \
         --max_steps 5000 \
         --warmup_steps 100 \
+        --save_total_limit 3 \
         --save_steps 50 \
         --logging_steps 1 \
         --save_safetensors True \

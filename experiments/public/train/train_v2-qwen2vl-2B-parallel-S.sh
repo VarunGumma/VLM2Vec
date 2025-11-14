@@ -1,7 +1,4 @@
 #!/bin/bash
-echo "Python location: $(which python)"
-echo -e "Python version: $(python --version)\n"
-
 PATH_TO_VLM2VEC_REPO="/home/ubuntu/porialab-us-midwest-1/varun/vlm2vec2"
 PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
 NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
@@ -65,6 +62,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --warmup_steps 100 \
         --save_steps 50 \
         --logging_steps 1 \
+        --save_total_limit 3 \
         --save_safetensors True \
         --remove_unused_columns False \
         --resume_from auto \

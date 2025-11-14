@@ -51,10 +51,14 @@ def main():
     model_args, data_args, training_args, aux_encoder_args = (
         parser.parse_args_into_dataclasses()
     )
+
     model_args: ModelArguments
     data_args: DataArguments
     training_args: TrainingArguments
     aux_encoder_args: AuxEncoderArguments
+
+    if not model_args.add_aux_encoder:
+        aux_encoder_args = None
 
     # DEBUG PRINTS for Distributed Setup
     print("Distributed init debug info:")
@@ -105,11 +109,7 @@ def main():
             if model_args.add_aux_encoder:
                 wandb.config.update(aux_encoder_args)
 
-    model = MMEBModel.build(model_args)
-    model.main_input_name = "input_ids"
-
-    if model_args.add_aux_encoder:
-        model.build_aux_encoder(aux_encoder_args)
+    model = MMEBModel.build(model_args, aux_encoder_args)
 
     # sum the trainable parameters
     total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

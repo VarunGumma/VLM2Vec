@@ -1,7 +1,4 @@
 #!/bin/bash
-echo "Python location: $(which python)"
-echo -e "Python version: $(python --version)\n"
-
 PATH_TO_VLM2VEC_REPO="/home/ubuntu/porialab-us-midwest-1/varun/vlm2vec2"
 PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
 NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
@@ -21,7 +18,7 @@ export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
 export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.parallel.hidden512.layers28.gqa.attnqknorm.heads8.kvheads4.intsize2048"
 export WANDB_NAME=$EXP_NAME
-export EXP_DIR=${PATH_TO_VLM2VEC_REPO}/outputs/${EXP_NAME}
+export EXP_DIR=${PATH_TO_VLM2VEC_NFS}/outputs/${EXP_NAME}
 export WANDB_DIR=$EXP_DIR
 
 echo $EXP_DIR
@@ -65,6 +62,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --warmup_steps 100 \
         --save_steps 50 \
         --logging_steps 1 \
+        --save_total_limit 3 \
         --save_safetensors True \
         --remove_unused_columns False \
         --resume_from auto \
