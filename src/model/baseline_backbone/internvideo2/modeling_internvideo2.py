@@ -656,7 +656,7 @@ class LayerScale(nn.Module):
         self.weight = nn.Parameter(init_values * torch.ones(dim))
         self.force_fp32 = force_fp32
 
-    @torch.cuda.amp.autocast(enabled=False)
+    @torch.amp.autocast(enabled=False, device_type="cuda")
     def forward(self, x):
         if self.force_fp32:
             output_type = x.dtype

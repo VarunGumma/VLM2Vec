@@ -20,6 +20,9 @@ class ModelArguments:
     checkpoint_path: str = field(
         default=None, metadata={"help": "a local model path, could be a LoRA version"}
     )
+    load_from_hf: bool = field(
+        default=False, metadata={"help": "whether load model from huggingface"}
+    )
     pooling: str = field(
         default="last", metadata={"help": "pooling method for encoder"}
     )

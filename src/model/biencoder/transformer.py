@@ -48,7 +48,7 @@ class BiEncoderLayer(nn.Module):
             )
         )
 
-    def _attn_forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
+    def forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
         residual = x_q
         x_q = self.attn_norm(x_q)
 
@@ -60,13 +60,9 @@ class BiEncoderLayer(nn.Module):
             x_k = x_q
             x_v = x_q
 
-        return residual + self.attn(x_q, x_k, x_v, attn_mask=attn_mask)
-
-    def _mlp_forward(self, x):
-        return x + self.mlp(self.mlp_norm(x))
-
-    def forward(self, x_q, x_k=None, x_v=None, attn_mask=None):
-        return self._mlp_forward(self._attn_forward(x_q, x_k, x_v, attn_mask=attn_mask))
+        x = residual + self.attn(x_q, x_k, x_v, attn_mask)
+        x = x + self.mlp(self.mlp_norm(x))
+        return x
 
 
 class BiEncoder(nn.Module):

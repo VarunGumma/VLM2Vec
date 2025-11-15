@@ -16,7 +16,7 @@ echo "Effective batch size: $((NUM_GPUS * PER_DEVICE_BS * GRAD_ACC))"
 
 export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
-export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.parallel.hidden512.layers28.gqa.attnqknorm.heads8.kvheads4.intsize2048"
+export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora16.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.parallel.hidden512.layers28.gqa.attnqknorm.heads16.intsize4096"
 export WANDB_NAME=$EXP_NAME
 export EXP_DIR=${PATH_TO_VLM2VEC_NFS}/outputs/${EXP_NAME}
 export WANDB_DIR=$EXP_DIR
@@ -32,9 +32,9 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --tf32 True \
         --lora True \
         --use_dora True \
-        --lora_r 1 \
-        --lora_alpha 2 \
-        --lora_dropout 0.0 \
+        --lora_r 16 \
+        --lora_alpha 32 \
+        --lora_dropout 0.1 \
         --lora-target-modules "all-linear" \
         --pooling mean \
         --normalize True \
@@ -62,7 +62,6 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --warmup_steps 100 \
         --save_steps 50 \
         --logging_steps 1 \
-        --save_total_limit 3 \
         --save_safetensors True \
         --remove_unused_columns False \
         --resume_from auto \
@@ -71,9 +70,7 @@ torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_restarts=0 
         --parallel_encoder True \
         --hidden_size 512 \
         --num_layers 28 \
-        --use_gqa True \
         --attn_qk_norm True \
-        --num_attn_heads 8 \
-        --num_kv_attn_heads 4 \
-        --intermediate_size 2048 \
+        --num_attn_heads 16 \
+        --intermediate_size 4096 \
         --backbone_model_hidden_size 1536 2>&1 | tee $EXP_DIR/train.log

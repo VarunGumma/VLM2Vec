@@ -1,6 +1,7 @@
 #!/bin/bash
-PATH_TO_VLM2VEC_REPO="/scratch_aisg/peerat_main/VLM2Vec"
-PATH_TO_VLM2VEC_NFS="/scratch_aisg/peerat_main/VLM2Vec"
+CUDA_VISIBLE_DEVICES=0,1
+PATH_TO_VLM2VEC_REPO="/home/ubuntu/varun/vlm2vec2"
+PATH_TO_VLM2VEC_NFS="/lambda/nfs/poria-cvpr-2026/varun/vlm2vec2"
 NUM_GPUS=$(echo $CUDA_VISIBLE_DEVICES | awk -F',' '{print NF}')
 
 GLOBAL_BS=1024
@@ -9,14 +10,14 @@ GRAD_ACC=$((GLOBAL_BS / (NUM_GPUS * PER_DEVICE_BS)))
 
 MASTER_PORT=54321
 MODEL_NAME="Qwen/Qwen2-VL-2B-Instruct"
-CONFIG_YAML="experiments/public/train/train_alltasks.yaml"
+CONFIG_YAML="experiments/public/train/train_alltasks_lambda.yaml"
 
 echo "Using ${NUM_GPUS} GPUs with gradient accumulation steps ${GRAD_ACC}"
 echo "Effective batch size: $((NUM_GPUS * PER_DEVICE_BS * GRAD_ACC))"
 
 export HF_DATASETS_CACHE="${PATH_TO_VLM2VEC_NFS}/hf_ds_cache"
 export WANDB_PROJECT="multimodal-embeddings"
-export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.series.hidden256.layers3.gqa.attnqknorm.heads8.kvheads4.intsize1024"
+export EXP_NAME="Qwen2vl_2B.image+visdoc+video.autoresize.lora1.BS1024.IB64.GCq8p8.NormTemp002.lr5e-5.step5kwarm100.auxenc.series.hidden256.layers3.gqa.attnqknorm.heads8.kvheads4.intsize1024.MUON_TEST"
 export WANDB_NAME=$EXP_NAME
 export EXP_DIR=${PATH_TO_VLM2VEC_REPO}/outputs/${EXP_NAME}
 export WANDB_DIR=$EXP_DIR
@@ -39,6 +40,7 @@ uv run torchrun --nproc_per_node=$NUM_GPUS --master_port=$MASTER_PORT --max_rest
         --pooling mean \
         --normalize True \
         --temperature 0.02 \
+        --optim muon \
         --gradient-checkpointing True \
         --gradient_checkpointing_kwargs '{"use_reentrant": false}' \
         --dataloader_num_workers 16 \

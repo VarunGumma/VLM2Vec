@@ -9,6 +9,7 @@ import os
 import pickle
 import sys
 import torch
+import warnings
 import torch.distributed as dist
 import torch.nn.functional as F
 import yaml
@@ -26,7 +27,10 @@ from src.arguments import (
     AuxEncoderArguments,
 )
 from src.data.collator.eval_collator import MultimodalEvalDataCollator
-from src.data.eval_dataset.base_eval_dataset import AutoEvalPairDataset, generate_cand_dataset
+from src.data.eval_dataset.base_eval_dataset import (
+    AutoEvalPairDataset,
+    generate_cand_dataset,
+)
 from src.utils.eval_utils.metrics import RankingMetrics
 from src.model.model import MMEBModel
 from src.model.processor import get_backbone_name, load_processor, COLPALI
@@ -36,6 +40,8 @@ logging.basicConfig(
     level=logging.INFO,
     format="[%(asctime)s] %(levelname)s [%(name)s:%(lineno)s] %(message)s",
 )
+
+warnings.filterwarnings("ignore")
 logger = logging.getLogger(__name__)
 
 
@@ -192,7 +198,18 @@ def main():
     training_args: TrainingArguments
     os.makedirs(data_args.encode_output_path, exist_ok=True)
 
-    if not model_args.add_aux_encoder:
+    model_name_or_path = (
+        model_args.checkpoint_path
+        if model_args.checkpoint_path
+        else model_args.model_name
+    )
+    print_master(f"Model Path or Name: {model_name_or_path}")
+
+    if model_args.add_aux_encoder:
+        cfg_path = os.path.join(model_name_or_path, "aux_encoder", "config.json")
+        with open(cfg_path, "r", encoding="utf-8") as f:
+            aux_encoder_args = AuxEncoderArguments(**json.load(f))
+    else:
         aux_encoder_args = None
 
     # --- Model Loading ---
@@ -209,17 +226,17 @@ def main():
     # Step 1: Only the master process (rank 0) downloads the model.
     if local_rank == 0:
         processor = load_processor(model_args, data_args)
-        processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = (
-            True
-        )
         model = MMEBModel.load(
             model_args,
-            aux_encoder_args,
             is_trainable=False,
             processor=processor,
         )
+        if model_args.add_aux_encoder:
+            model.build_aux_encoder(aux_encoder_args)
+            model.load_aux_encoder(model_name_or_path)
+
         print_master(
-            f"[rank=0] Loading the model from Huggingface: {model_args.model_name}..."
+            f"[rank=0] Loading the model from Huggingface: {model_name_or_path}..."
         )
         print(f"Loaded model: {model} on local_rank {local_rank}")
     # Step 2: All processes wait here. The non-master processes will pause
@@ -233,10 +250,13 @@ def main():
         time.sleep(random.randint(2 * local_rank, 3 * local_rank))
         model = MMEBModel.load(
             model_args,
-            aux_encoder_args,
             is_trainable=False,
             processor=processor,
         )
+        if model_args.add_aux_encoder:
+            model.build_aux_encoder(aux_encoder_args)
+            model.load_aux_encoder(model_name_or_path)
+
         print(f"Loaded model: {model} on local_rank {local_rank}")
 
     model = model.to(training_args.device, dtype=torch.bfloat16)
@@ -343,7 +363,7 @@ def main():
             gt_infos = gt_infos[: len(full_eval_qry_dataset)]
 
             if local_rank == 0:
-                with open(query_embed_path, "wb", encoding="utf-8") as f:
+                with open(query_embed_path, "wb") as f:
                     pickle.dump(query_embeds, f)
                 with open(dataset_info_path, "w", encoding="utf-8") as f:
                     f.write("\n".join([json.dumps(i) for i in gt_infos]) + "\n")
@@ -383,7 +403,7 @@ def main():
                 cand_embed_dict = {
                     cand_id: embed for cand_id, embed in zip(all_cand_ids, cand_embeds)
                 }
-                with open(cand_embed_path, "wb", encoding="utf-8") as f:
+                with open(cand_embed_path, "wb") as f:
                     pickle.dump(cand_embed_dict, f)
                 print_master(f"Saved candidate embeddings to {cand_embed_path}")
 
@@ -409,9 +429,9 @@ def main():
                     print_master(
                         f"Failed to load score for {dataset_name}, skipping {dataset_name}"
                     )
-            with open(query_embed_path, "rb", encoding="utf-8") as f:
+            with open(query_embed_path, "rb") as f:
                 qry_embeds = pickle.load(f)
-            with open(cand_embed_path, "rb", encoding="utf-8") as f:
+            with open(cand_embed_path, "rb") as f:
                 cand_embed_dict = pickle.load(f)
             with open(dataset_info_path, "r", encoding="utf-8") as f:
                 gt_infos = [json.loads(l) for l in f]
@@ -529,6 +549,7 @@ def main():
                 json.dump(score_dict, f, indent=4)
             with open(pred_path, "w", encoding="utf-8") as f:
                 f.write("\n".join([json.dumps(p) for p in pred_dicts]) + "\n")
+
 
 if __name__ == "__main__":
     main()

@@ -11,6 +11,7 @@ archive/
 VLM2Vec-pro.iml
 VLM2Vec.iml
 workspace.xml
+experiments/public/plots/
 
 # Compiled source #
 ###################

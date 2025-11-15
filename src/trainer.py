@@ -5,6 +5,7 @@ import sys
 import time
 import json
 
+import torch.nn as nn
 from packaging import version
 from accelerate import skip_first_batches, DistributedType
 from transformers.trainer import Trainer, TRAINING_ARGS_NAME, TRAINER_STATE_NAME
@@ -49,7 +50,6 @@ from transformers.utils import (
 )
 
 from src.utils.basic_utils import batch_to_device
-from src.utils.basic_utils import print_master
 
 if is_torch_xla_available():
     import torch_xla.core.xla_model as xm
@@ -70,6 +70,7 @@ class MMEBTrainer(Trainer):
     def __init__(self, *args, **kwargs):
         self.model_args = kwargs.pop("model_args", None)
         self.max_length = kwargs.pop("max_length", 512)
+        self.has_lora = self.model_args.lora if self.model_args is not None else False
 
         super(MMEBTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()
@@ -107,16 +108,23 @@ class MMEBTrainer(Trainer):
     def _save(self, output_dir: Optional[str] = None, state_dict=None):
         os.makedirs(output_dir, exist_ok=True)
 
-        self.model.save_pretrained(
-            output_dir, safe_serialization=self.args.save_safetensors
-        )
+        if self.has_lora:
+            self.model.save_pretrained(
+                os.path.join(output_dir, "adapters"),
+                safe_serialization=self.args.save_safetensors,
+            )
+        else:
+            self.model.save_pretrained(
+                output_dir, safe_serialization=self.args.save_safetensors
+            )
 
         if self.processor is not None:
             self.processor.save_pretrained(output_dir)
 
         if self.model.aux_encoder is not None:
-            ckpt_path = os.path.join(output_dir, "aux_encoder.pth")
-            cfg_path = os.path.join(output_dir, "aux_encoder_config.json")
+            aux_encoder_dir = os.path.join(output_dir, "aux_encoder")
+            ckpt_path = os.path.join(aux_encoder_dir, "model.pth")
+            cfg_path = os.path.join(aux_encoder_dir, "config.json")
 
             torch.save(self.model.aux_encoder.state_dict(), ckpt_path)
             with open(cfg_path, "w", encoding="utf-8") as f:
@@ -791,7 +799,7 @@ class GradCacheLateProcessTrainer(MMEBTrainer):
     def __init__(self, *args, **kwargs):
         self.model_args = kwargs.pop("model_args", None)
         self.max_length = kwargs.pop("max_length", 512)
-        self.has_lora = kwargs.pop("lora", False)
+        self.has_lora = self.model_args.lora if self.model_args is not None else False
 
         super(GradCacheLateProcessTrainer, self).__init__(*args, **kwargs)
         self.is_ddp = dist.is_initialized()

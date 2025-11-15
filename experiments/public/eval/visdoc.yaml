@@ -55,27 +55,27 @@ ViDoRe_syntheticDocQA_healthcare_industry:
 #    dataset_name: ViDoRe_esg_reports_human_labeled_v2
 #    image_root: visdoc-tasks/esg_reports_human_labeled_v2
 #    eval_type: global
-#ViDoRe_biomedical_lectures_v2:
+# ViDoRe_biomedical_lectures_v2:
 #    dataset_parser: vidore
 #    dataset_name: ViDoRe_biomedical_lectures_v2
 #    image_root: visdoc-tasks/biomedical_lectures_v2
 #    eval_type: global
-#ViDoRe_biomedical_lectures_v2_multilingual:
-#    dataset_parser: vidore
-#    dataset_name: ViDoRe_biomedical_lectures_v2_multilingual
-#    image_root: visdoc-tasks/biomedical_lectures_v2_multilingual
-#    eval_type: global
-#ViDoRe_economics_reports_v2:
+# #ViDoRe_biomedical_lectures_v2_multilingual:
+# #    dataset_parser: vidore
+# #    dataset_name: ViDoRe_biomedical_lectures_v2_multilingual
+# #    image_root: visdoc-tasks/biomedical_lectures_v2_multilingual
+# #    eval_type: global
+# ViDoRe_economics_reports_v2:
 #    dataset_parser: vidore
 #    dataset_name: ViDoRe_economics_reports_v2
 #    image_root: visdoc-tasks/economics_reports_v2
 #    eval_type: global
-#ViDoRe_economics_reports_v2_multilingual:
-#    dataset_parser: vidore
-#    dataset_name: ViDoRe_economics_reports_v2_multilingual
-#    image_root: visdoc-tasks/economics_reports_v2_multilingual
-#    eval_type: global
-#ViDoRe_esg_reports_v2:
+# #ViDoRe_economics_reports_v2_multilingual:
+# #    dataset_parser: vidore
+# #    dataset_name: ViDoRe_economics_reports_v2_multilingual
+# #    image_root: visdoc-tasks/economics_reports_v2_multilingual
+# #    eval_type: global
+# ViDoRe_esg_reports_v2:
 #    dataset_parser: vidore
 #    dataset_name: ViDoRe_esg_reports_v2
 #    image_root: visdoc-tasks/esg_reports_v2
@@ -128,6 +128,7 @@ ViDoSeek-doc:
     dataset_name: ViDoSeek-doc
     image_root: visdoc-tasks/ViDoSeek-doc
     eval_type: global
+
 MMLongBench-doc:
     dataset_parser: vidore
     dataset_name: MMLongBench-doc

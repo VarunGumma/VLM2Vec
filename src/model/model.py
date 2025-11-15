@@ -216,7 +216,6 @@ class MMEBModel(nn.Module):
     def build(
         cls,
         model_args: ModelArguments,
-        aux_encoder_args: AuxEncoderArguments = None,
         **kwargs,
     ):
         config = AutoConfig.from_pretrained(
@@ -245,11 +244,9 @@ class MMEBModel(nn.Module):
                 dtype=torch.bfloat16,
             )
         elif model_backbone in [QWEN2_VL, QWEN2_5_VL, QWEN3_VL]:
-            if LIGER_PATCHER and model_backbone in LIGER_PATCHER:
-                LIGER_PATCHER[model_backbone]()
-                print_master(
-                    f"Applied Liger Kernel monkey patching for {model_backbone}"
-                )
+            liger_patch_fn = LIGER_PATCHER.get(model_backbone, None)
+            if liger_patch_fn is not None:
+                liger_patch_fn()
 
             config._attn_implementation = "flash_attention_2"
             config.padding_side = "left"
@@ -320,12 +317,6 @@ class MMEBModel(nn.Module):
                 temperature=model_args.temperature,
             )
 
-        if model_args.add_aux_encoder:
-            assert (
-                aux_encoder_args is not None
-            ), "Aux encoder args must be provided when add_aux_encoder is True."
-            model._build_aux_encoder(aux_encoder_args)
-
         return model
 
     def gradient_checkpointing_enable(
@@ -340,19 +331,32 @@ class MMEBModel(nn.Module):
             gradient_checkpointing_kwargs=gradient_checkpointing_kwargs
         )
 
-    def _build_aux_encoder(
+    def build_aux_encoder(
         self,
         model_args: AuxEncoderArguments,
     ):
         self.aux_encoder_config = model_args
         self.aux_encoder = BiEncoder(model_args)
 
+    def load_aux_encoder(
+        self,
+        checkpoint_dir: str,
+        strict: bool = True,
+    ):
+        if self.aux_encoder is None:
+            raise ValueError(
+                "Aux encoder is not built yet. Please call build_aux_encoder first."
+            )
+
+        ckpt_path = os.path.join(checkpoint_dir, "aux_encoder", "model.pth")
+        ckpt = torch.load(ckpt_path, map_location="cpu")
+        self.aux_encoder.load_state_dict(ckpt, strict=strict)
+
     @classmethod
     def load(
         cls,
         model_args: ModelArguments,
-        aux_encoder_args: AuxEncoderArguments = None,
-        is_trainable=True,
+        is_trainable: bool = True,
         **kwargs,
     ):
         # Loading the base model
@@ -380,12 +384,16 @@ class MMEBModel(nn.Module):
             QWEN2_5_VL_TOKENSELECTION,
             E5_V,
         }:
+            liger_patch_fn = LIGER_PATCHER.get(model_args.model_backbone, None)
+            if liger_patch_fn is not None:
+                liger_patch_fn()
+
             config = AutoConfig.from_pretrained(model_args.model_name)
             config._attn_implementation = "flash_attention_2"
             config.vision_config._attn_implementation = "flash_attention_2"
             base_model = backbone2model[model_args.model_backbone].from_pretrained(
                 model_args.model_name,
-                torch_dtype=torch.bfloat16,
+                dtype=torch.bfloat16,
                 config=config,
             )
         elif model_args.model_backbone == PHI3V:
@@ -395,7 +403,7 @@ class MMEBModel(nn.Module):
             base_model = Phi3VForCausalLM.from_pretrained(
                 model_args.model_name,
                 config=config,
-                torch_dtype=torch.bfloat16,
+                dtype=torch.bfloat16,
                 **kwargs,
             )
             base_model.padding_side = "right"
@@ -429,24 +437,32 @@ class MMEBModel(nn.Module):
             base_model = cls.TRANSFORMER_CLS.from_pretrained(
                 model_name_or_path,
                 config=config,
-                torch_dtype=torch.bfloat16,
+                dtype=torch.bfloat16,
                 **kwargs,
             )
 
         # Building the model on top of the base
         if model_args.lora:
-            print_master(f"Loading LoRA from {model_name_or_path}")
-            lora_config = LoraConfig.from_pretrained(model_name_or_path)
+            adapters_dir = (
+                os.path.join(model_name_or_path, "adapters")
+                if not model_args.load_from_hf
+                else model_name_or_path
+            )
+            print_master(f"Loading LoRA from {adapters_dir}")
+            lora_config = LoraConfig.from_pretrained(adapters_dir)
             lora_model = PeftModel.from_pretrained(
                 base_model,
-                model_name_or_path,
+                adapters_dir,
                 config=lora_config,
                 is_trainable=is_trainable,
             )
             lora_model.load_adapter(
-                model_name_or_path, lora_model.active_adapter, is_trainable=is_trainable
+                adapters_dir, lora_model.active_adapter, is_trainable=is_trainable
             )
             if not is_trainable:
+                print_master(
+                    "Merging LoRA weights into the base model for inference..."
+                )
                 lora_model = lora_model.merge_and_unload()
             model = cls(
                 encoder=lora_model,
@@ -463,26 +479,26 @@ class MMEBModel(nn.Module):
             )
 
         model.model_backbone = model_args.model_backbone
-
-        if model_args.add_aux_encoder:
-            if aux_encoder_args is None:
-                cfg_path = os.path.join(model_name_or_path, "aux_encoder_config.json")
-                if not os.path.exists(cfg_path):
-                    raise ValueError(
-                        f"Aux Encoder Config not provided and default config file not found at {cfg_path}"
-                    )
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    args = AuxEncoderArguments(**json.load(f))
-                    model._build_aux_encoder(args)
-
         return model
 
     def save(self, output_dir: str):
         os.makedirs(output_dir, exist_ok=True)
-        self.encoder.save_pretrained(output_dir, safe_serialization=True)
+
+        if self.model_args.lora:
+            self.encoder.save_pretrained(
+                os.path.join(output_dir, "adapters"), safe_serialization=True
+            )
+        else:
+            self.encoder.save_pretrained(output_dir, safe_serialization=True)
+
         if self.aux_encoder is not None:
-            ckpt_path = os.path.join(output_dir, "aux_encoder.pth")
+            aux_encoder_dir = os.path.join(output_dir, "aux_encoder")
+            os.makedirs(aux_encoder_dir, exist_ok=True)
+            ckpt_path = os.path.join(aux_encoder_dir, "model.pth")
+            cfg_path = os.path.join(aux_encoder_dir, "config.json")
             torch.save(self.aux_encoder.state_dict(), ckpt_path)
+            with open(cfg_path, "w", encoding="utf-8") as f:
+                json.dump(self.aux_encoder_config.__dict__, f, indent=2)
 
     def forward(
         self,

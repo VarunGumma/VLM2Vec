@@ -297,7 +297,7 @@ def load_processor(model_args, data_args=None):
             trust_remote_code=True,
             use_fast=True,
         )
-    
+
     processor.tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
     return processor
 
